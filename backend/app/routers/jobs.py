@@ -1,0 +1,51 @@
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+from app.database import get_db
+from app.models.job import JobPosting
+from app.models.user import User
+from app.schemas.job import JobCreate, JobUpdate, JobOut
+from app.utils.auth import get_current_user
+
+router = APIRouter(prefix="/api/jobs", tags=["jobs"])
+
+
+@router.get("", response_model=dict)
+def list_jobs(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    jobs = db.query(JobPosting).filter(JobPosting.status != "deleted").order_by(JobPosting.created_at.desc()).all()
+    return {"data": [JobOut.model_validate(j).model_dump() for j in jobs]}
+
+
+@router.post("", response_model=dict, status_code=201)
+def create_job(body: JobCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    job = JobPosting(
+        created_by=current_user.id,
+        title=body.title,
+        description=body.description,
+        required_skills=body.required_skills,
+        nice_to_have_skills=body.nice_to_have_skills,
+        scoring_weights=body.scoring_weights,
+    )
+    db.add(job)
+    db.commit()
+    db.refresh(job)
+    return {"data": JobOut.model_validate(job).model_dump()}
+
+
+@router.get("/{job_id}", response_model=dict)
+def get_job(job_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    job = db.query(JobPosting).filter(JobPosting.id == job_id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return {"data": JobOut.model_validate(job).model_dump()}
+
+
+@router.patch("/{job_id}", response_model=dict)
+def update_job(job_id: str, body: JobUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    job = db.query(JobPosting).filter(JobPosting.id == job_id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    for field, val in body.model_dump(exclude_unset=True).items():
+        setattr(job, field, val)
+    db.commit()
+    db.refresh(job)
+    return {"data": JobOut.model_validate(job).model_dump()}

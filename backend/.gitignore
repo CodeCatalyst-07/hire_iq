@@ -1,0 +1,25 @@
+# ─── Python ───────────────────────────────────────────────────────────────────
+venv/
+__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# ─── Environment & Secrets (NEVER commit) ─────────────────────────────────────
+.env
+.env.*
+!.env.example
+
+# ─── Uploads & local data ─────────────────────────────────────────────────────
+uploads/
+*.db
+*.sqlite3
+*.log
+
+# ─── macOS ────────────────────────────────────────────────────────────────────
+.DS_Store

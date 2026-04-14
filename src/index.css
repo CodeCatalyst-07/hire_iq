@@ -1,0 +1,8 @@
+@import "tailwindcss";
+@config "../tailwind.config.js";
+
+@layer base {
+  body {
+    @apply bg-background text-text-primary antialiased selection:bg-purple-100 selection:text-primary;
+  }
+}
