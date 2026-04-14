@@ -20,6 +20,7 @@ export default function CandidateProfile() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const [generatingQ, setGeneratingQ] = useState(false);
+  const [qError, setQError] = useState('');
   const [statusLoading, setStatusLoading] = useState(false);
   const [showStatusDrop, setShowStatusDrop] = useState(false);
 
@@ -44,10 +45,15 @@ export default function CandidateProfile() {
   const handleGenerateQuestions = async () => {
     if (!profile) return;
     setGeneratingQ(true);
+    setQError('');
     try {
       const bank = await generateQuestions(profile.id, profile.job_id);
       navigate(`/interview/questions/${bank.id}?candidateId=${profile.candidate_id}&jobId=${profile.job_id}`);
-    } catch {} finally { setGeneratingQ(false); }
+    } catch (err: any) {
+      const msg = err?.response?.data?.detail || 'Question generation failed. Please try again.';
+      setQError(msg);
+      setTimeout(() => setQError(''), 6000);
+    } finally { setGeneratingQ(false); }
   };
 
   if (loading) return (
@@ -112,6 +118,11 @@ export default function CandidateProfile() {
             {generatingQ ? <Loader2 className="w-4 h-4 animate-spin" /> : <Brain className="w-4 h-4" />}
             {generatingQ ? 'Generating...' : 'Generate Questions'}
           </button>
+          {qError && (
+            <div className="fixed bottom-6 right-6 z-50 max-w-sm px-5 py-4 bg-red-50 border border-red-200 text-red-700 text-sm font-medium rounded-xl shadow-lg">
+              ⚠️ {qError}
+            </div>
+          )}
         </div>
       </header>
 

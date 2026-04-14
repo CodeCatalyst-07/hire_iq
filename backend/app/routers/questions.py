@@ -40,6 +40,12 @@ def generate(
         missing_skills=missing,
     )
 
+    if not questions:
+        raise HTTPException(
+            status_code=503,
+            detail="AI question generation failed (Gemini API unavailable or quota exceeded). Please try again in a few seconds."
+        )
+
     bank = QuestionBank(
         job_id=job.id,
         candidate_profile_id=profile.id,
