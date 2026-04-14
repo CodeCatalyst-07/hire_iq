@@ -1,6 +1,9 @@
 import json
+import logging
 import re
 from app.utils.gemini import call_gemini
+
+logger = logging.getLogger(__name__)
 
 
 def generate_questions(parsed_profile: dict, job_title: str, required_skills: list, nice_to_have: list, missing_skills: list) -> list[dict]:
@@ -39,7 +42,8 @@ Return ONLY a JSON array, no markdown, no code fences:
 
     try:
         raw = call_gemini(prompt)
-    except Exception:
+    except Exception as e:
+        logger.error(f"[generate_questions] Gemini call failed: {type(e).__name__}: {e}")
         return []
 
     cleaned = re.sub(r"```(?:json)?", "", raw).strip().rstrip("`")
@@ -88,8 +92,9 @@ Return ONLY this JSON, no markdown:
 
     try:
         raw = call_gemini(prompt)
-    except Exception:
+    except Exception as e:
         # Return neutral scores on Gemini API failure (quota/timeout)
+        logger.error(f"[evaluate_answer] Gemini call failed: {type(e).__name__}: {e}")
         return {
             "relevance_score": 5.0, "clarity_score": 5.0, "depth_score": 5.0,
             "confidence_score": 5.0, "structure_score": 5.0,

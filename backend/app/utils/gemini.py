@@ -1,6 +1,13 @@
+import logging
 import time
 import google.generativeai as genai
 from app.config import settings
+
+logger = logging.getLogger(__name__)
+
+# Log the model being used at startup so we can verify in Render logs
+logger.info(f"[Gemini] Configuring with model: {settings.gemini_model}")
+logger.info(f"[Gemini] API key present: {bool(settings.gemini_api_key)} | key prefix: {settings.gemini_api_key[:8] if settings.gemini_api_key else 'MISSING'}")
 
 genai.configure(api_key=settings.gemini_api_key)
 
@@ -16,18 +23,29 @@ def call_gemini(prompt: str, max_retries: int = 3) -> str:
     """Call Gemini API with exponential backoff on quota errors."""
     model = get_gemini_model()
     last_err = None
+
     for attempt in range(max_retries):
         try:
+            logger.info(f"[Gemini] Attempt {attempt + 1}/{max_retries} — model: {_model_name}")
             response = model.generate_content(prompt)
+            logger.info(f"[Gemini] Success on attempt {attempt + 1}")
             return response.text
+
         except Exception as e:
             last_err = e
             err_str = str(e)
-            # Retry on quota/rate-limit errors
+            logger.error(f"[Gemini] Attempt {attempt + 1} failed: {type(e).__name__}: {err_str}")
+
+            # Retry only on quota/rate-limit errors
             if "429" in err_str or "quota" in err_str.lower() or "rate" in err_str.lower():
                 wait = 2 ** attempt  # 1s, 2s, 4s
+                logger.warning(f"[Gemini] Rate limited — waiting {wait}s before retry")
                 time.sleep(wait)
                 continue
-            # Don't retry on other errors (auth, model not found, etc.)
+
+            # Don't retry on auth errors, model-not-found, etc.
+            logger.error(f"[Gemini] Non-retryable error — aborting: {err_str}")
             raise
+
+    logger.error(f"[Gemini] All {max_retries} attempts exhausted. Last error: {last_err}")
     raise last_err

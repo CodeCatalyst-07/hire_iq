@@ -13,7 +13,7 @@ class Settings(BaseSettings):
 
     # Gemini
     gemini_api_key: str
-    gemini_model: str = "gemini-1.5-flash"
+    gemini_model: str = "gemini-flash-latest"
 
     # JWT
     jwt_secret_key: str
