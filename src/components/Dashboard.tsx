@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Users, FileUser, Briefcase, Plus, Search, Filter, ChevronRight, X, Loader2, UploadCloud } from 'lucide-react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { listJobs, createJob } from '../api/jobs';
 import { uploadResume, listCandidates, getDashboardStats } from '../api/candidates';
@@ -15,7 +15,6 @@ interface Stats { total_resumes: number; shortlisted: number; avg_match_score: n
 
 export default function Dashboard() {
   const { user, logout } = useAuth();
-  const navigate = useNavigate();
 
   const [jobs, setJobs] = useState<Job[]>([]);
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
