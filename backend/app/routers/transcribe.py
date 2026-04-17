@@ -15,24 +15,52 @@ HF_API_URL = "https://api-inference.huggingface.co/models/openai/whisper-large-v
 MAX_WARMUP_WAIT = 30  # seconds
 
 
-def _convert_to_wav(audio_bytes: bytes, src_format: str) -> bytes:
+def _convert_to_wav(audio_bytes: bytes) -> bytes:
     """
-    Convert audio bytes (webm/mp4/ogg/etc.) to 16-bit mono 16kHz WAV
-    using pydub + ffmpeg. Returns the WAV bytes.
-    Falls back to returning the original bytes if conversion fails
-    (so Whisper at least gets *something* to try).
+    Convert audio bytes (any format: webm, mp4, ogg…) to
+    16-bit mono 16kHz WAV using PyAV (av package).
+
+    PyAV bundles its own libav/ffmpeg shared libraries inside the pip
+    wheel — no system ffmpeg or apt-get install required.
+    Falls back to returning the original bytes if conversion fails.
     """
     try:
-        from pydub import AudioSegment
-        audio = AudioSegment.from_file(io.BytesIO(audio_bytes), format=src_format)
-        audio = audio.set_channels(1).set_frame_rate(16000).set_sample_width(2)
-        buf = io.BytesIO()
-        audio.export(buf, format="wav")
-        wav_bytes = buf.getvalue()
-        logger.info(f"[Transcribe] Converted {src_format} → WAV ({len(wav_bytes)} bytes)")
+        import av
+        import av.audio.resampler
+
+        in_buf = io.BytesIO(audio_bytes)
+        out_buf = io.BytesIO()
+
+        in_container = av.open(in_buf)          # auto-detect format
+        in_stream = in_container.streams.audio[0]
+
+        out_container = av.open(out_buf, mode="w", format="wav")
+        out_stream = out_container.add_stream("pcm_s16le", rate=16000)
+        out_stream.layout = "mono"
+
+        resampler = av.audio.resampler.AudioResampler(
+            format="s16", layout="mono", rate=16000
+        )
+
+        for frame in in_container.decode(in_stream):
+            for resampled in resampler.resample(frame):
+                resampled.pts = None            # let PyAV assign timestamps
+                for packet in out_stream.encode(resampled):
+                    out_container.mux(packet)
+
+        # Flush encoder
+        for packet in out_stream.encode(None):
+            out_container.mux(packet)
+
+        out_container.close()
+        in_container.close()
+
+        wav_bytes = out_buf.getvalue()
+        logger.info(f"[Transcribe] PyAV converted audio → WAV ({len(wav_bytes)} bytes)")
         return wav_bytes
+
     except Exception as e:
-        logger.warning(f"[Transcribe] pydub conversion failed ({e}) — sending original bytes")
+        logger.warning(f"[Transcribe] PyAV conversion failed ({e}) — sending original bytes to Whisper")
         return audio_bytes
 
 
@@ -137,7 +165,7 @@ async def transcribe_audio(
     src_format = fmt_map.get(content_type, "webm")
 
     # Convert to WAV (Whisper handles WAV most reliably)
-    wav_bytes = _convert_to_wav(audio_bytes, src_format)
+    wav_bytes = _convert_to_wav(audio_bytes)
 
     hf_headers = {
         "Authorization": f"Bearer {settings.huggingface_api_key}",
