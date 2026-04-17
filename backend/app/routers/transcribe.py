@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/transcribe", tags=["transcribe"])
 
-HF_API_URL = "https://api-inference.huggingface.co/models/openai/whisper-large-v3"
+HF_API_URL = "https://api-inference.huggingface.co/models/openai/whisper-base"
 MAX_WARMUP_WAIT = 30  # seconds
 
 
