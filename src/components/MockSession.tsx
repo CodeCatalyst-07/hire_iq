@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Mic, MicOff, Send, AlertCircle, Clock, Loader2, CheckCircle2 } from 'lucide-react';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { getQuestionBank, submitAnswer, completeSession } from '../api/interviews';
+import client from '../api/client';
 
 interface Question {
   id: string; category: string; question: string; purpose: string;
@@ -18,6 +19,8 @@ export default function MockSession() {
   const [currentIdx, setCurrentIdx] = useState(0);
   const [answerText, setAnswerText] = useState('');
   const [isRecording, setIsRecording] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const [transcribeError, setTranscribeError] = useState('');
   const [timeLeft, setTimeLeft] = useState(15 * 60);
   const [submitting, setSubmitting] = useState(false);
   const [lastFeedback, setLastFeedback] = useState<any>(null);
@@ -25,6 +28,8 @@ export default function MockSession() {
   const [completing, setCompleting] = useState(false);
 
   const timerRef = useRef<any>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
 
   useEffect(() => {
     if (!bankId) return;
@@ -39,7 +44,107 @@ export default function MockSession() {
     return () => clearInterval(timerRef.current);
   }, []);
 
+  // Clean up MediaRecorder on unmount
+  useEffect(() => {
+    return () => {
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+        mediaRecorderRef.current.stop();
+      }
+    };
+  }, []);
+
   const formatTime = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+
+  // ── Speech-to-text ──────────────────────────────────────────────────────────
+
+  const startRecording = async () => {
+    setTranscribeError('');
+    audioChunksRef.current = [];
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+      // Pick the best supported MIME type (webm for Chrome/Firefox, mp4 for Safari)
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm')
+        ? 'audio/webm'
+        : MediaRecorder.isTypeSupported('audio/mp4')
+        ? 'audio/mp4'
+        : '';
+
+      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      mediaRecorderRef.current = recorder;
+
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) audioChunksRef.current.push(e.data);
+      };
+
+      recorder.onstop = async () => {
+        // Stop all mic tracks so the browser mic indicator disappears
+        stream.getTracks().forEach(t => t.stop());
+
+        const audioBlob = new Blob(audioChunksRef.current, {
+          type: mimeType || 'audio/webm',
+        });
+        await sendToTranscribe(audioBlob, mimeType || 'audio/webm');
+      };
+
+      recorder.start();
+      setIsRecording(true);
+    } catch (err: any) {
+      const msg = err?.name === 'NotAllowedError'
+        ? 'Microphone access denied. Please allow mic access in your browser.'
+        : 'Could not start recording. Please check your microphone.';
+      setTranscribeError(msg);
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+      mediaRecorderRef.current.stop();
+    }
+    setIsRecording(false);
+    setIsTranscribing(true);
+  };
+
+  const sendToTranscribe = async (audioBlob: Blob, mimeType: string) => {
+    try {
+      const ext = mimeType.includes('mp4') ? 'mp4' : 'webm';
+      const formData = new FormData();
+      formData.append('file', audioBlob, `recording.${ext}`);
+
+      const res = await client.post('/api/transcribe', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+
+      const transcribed: string = res.data?.text || '';
+      if (transcribed) {
+        // Append to existing answer with a space separator
+        setAnswerText(prev => prev ? `${prev} ${transcribed}` : transcribed);
+      } else {
+        setTranscribeError('No speech detected. Please try again.');
+      }
+    } catch (err: any) {
+      const detail = err?.response?.data?.detail || '';
+      if (detail.includes('loading')) {
+        setTranscribeError('Whisper model is warming up — please wait 20s and try again.');
+      } else {
+        setTranscribeError('Transcription failed. Please try again or type your answer.');
+      }
+    } finally {
+      setIsTranscribing(false);
+    }
+  };
+
+  const handleMicClick = () => {
+    if (isTranscribing) return; // ignore clicks while waiting for API
+    if (isRecording) {
+      stopRecording();
+    } else {
+      startRecording();
+    }
+  };
+
+  // ── Submit / Navigation ─────────────────────────────────────────────────────
 
   const handleSubmit = async () => {
     if (!sessionId || !answerText.trim() || submitting) return;
@@ -55,6 +160,7 @@ export default function MockSession() {
 
   const handleNext = () => {
     setLastFeedback(null);
+    setTranscribeError('');
     if (currentIdx < questions.length - 1) {
       setCurrentIdx(idx => idx + 1);
     }
@@ -77,6 +183,15 @@ export default function MockSession() {
       <Loader2 className="w-10 h-10 animate-spin text-primary" />
     </div>
   );
+
+  // Mic button appearance
+  const micBusy = isRecording || isTranscribing;
+  const micLabel = isTranscribing ? 'Transcribing…' : isRecording ? 'Stop' : 'Speak';
+  const micIcon = isTranscribing
+    ? <Loader2 className="w-5 h-5 animate-spin" />
+    : isRecording
+    ? <MicOff className="w-5 h-5" />
+    : <Mic className="w-5 h-5" />;
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
@@ -155,25 +270,57 @@ export default function MockSession() {
 
         {/* Answer input */}
         {!lastFeedback && (
-          <div className="relative">
-            <textarea
-              className="w-full h-48 bg-white border border-gray-300 rounded-2xl p-6 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all resize-none leading-relaxed shadow-sm"
-              placeholder="Type your answer here..."
-              value={answerText}
-              onChange={e => setAnswerText(e.target.value)}
-            />
-            <div className="absolute bottom-6 right-6 flex items-center gap-3">
-              <button onClick={() => setIsRecording(!isRecording)}
-                className={`w-12 h-12 rounded-full flex items-center justify-center transition-all border shadow-sm ${
-                  isRecording ? 'bg-red-50 text-red-600 border-red-200' : 'bg-white text-gray-500 hover:text-gray-900 border-gray-300'}`}>
-                {isRecording ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
-              </button>
-              <button onClick={handleSubmit} disabled={submitting || !answerText.trim()}
-                className="flex items-center gap-2 px-6 py-3 rounded-full bg-primary text-white shadow-sm hover:bg-primary/90 transition-all font-bold disabled:opacity-50">
-                {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                Submit Answer
-              </button>
+          <div className="flex flex-col gap-2">
+            <div className="relative">
+              <textarea
+                className="w-full h-48 bg-white border border-gray-300 rounded-2xl p-6 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all resize-none leading-relaxed shadow-sm"
+                placeholder="Type your answer here, or click the mic to speak…"
+                value={answerText}
+                onChange={e => setAnswerText(e.target.value)}
+              />
+              <div className="absolute bottom-6 right-6 flex items-center gap-3">
+                {/* Mic / Transcribe button */}
+                <button
+                  id="mic-btn"
+                  onClick={handleMicClick}
+                  disabled={isTranscribing}
+                  title={micLabel}
+                  className={`flex items-center gap-1.5 px-3 h-12 rounded-full transition-all border shadow-sm text-sm font-medium ${
+                    isRecording
+                      ? 'bg-red-50 text-red-600 border-red-300 animate-pulse'
+                      : isTranscribing
+                      ? 'bg-purple-50 text-primary border-primary/30'
+                      : 'bg-white text-gray-500 hover:text-gray-900 border-gray-300'
+                  }`}>
+                  {micIcon}
+                  <span>{micLabel}</span>
+                </button>
+
+                <button
+                  onClick={handleSubmit}
+                  disabled={submitting || !answerText.trim() || micBusy}
+                  className="flex items-center gap-2 px-6 py-3 rounded-full bg-primary text-white shadow-sm hover:bg-primary/90 transition-all font-bold disabled:opacity-50">
+                  {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                  Submit Answer
+                </button>
+              </div>
             </div>
+
+            {/* Transcription error */}
+            {transcribeError && (
+              <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-2 flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                {transcribeError}
+              </p>
+            )}
+
+            {/* Recording indicator */}
+            {isRecording && (
+              <p className="text-xs text-red-500 font-medium flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse inline-block" />
+                Recording… Click Stop when done.
+              </p>
+            )}
           </div>
         )}
 

@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     gemini_api_key: str
     gemini_model: str = "gemini-flash-latest"
 
+    # Hugging Face (for Whisper transcription)
+    huggingface_api_key: str = ""
+
     # JWT
     jwt_secret_key: str
     jwt_algorithm: str = "HS256"

@@ -21,7 +21,7 @@ api.add_middleware(
 # Import after app creation (avoids naming collision with 'app' package)
 from app.database import engine, Base       # noqa: E402
 import app.models                           # noqa: E402, F401
-from app.routers import auth, jobs, candidates, questions, sessions, dashboard  # noqa: E402
+from app.routers import auth, jobs, candidates, questions, sessions, dashboard, transcribe  # noqa: E402
 
 api.include_router(auth.router)
 api.include_router(jobs.router)
@@ -29,6 +29,7 @@ api.include_router(candidates.router)
 api.include_router(questions.router)
 api.include_router(sessions.router)
 api.include_router(dashboard.router)
+api.include_router(transcribe.router)
 
 
 @api.get("/api/health")
