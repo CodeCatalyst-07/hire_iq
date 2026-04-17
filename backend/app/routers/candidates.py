@@ -104,6 +104,14 @@ def list_candidates(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    # Verify the job belongs to the current user before listing its candidates
+    job = db.query(JobPosting).filter(
+        JobPosting.id == job_id,
+        JobPosting.created_by == current_user.id,
+    ).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found or access denied")
+
     query = (
         db.query(CandidateProfile)
         .filter(CandidateProfile.job_id == job_id)
@@ -133,9 +141,14 @@ def list_candidates(
 
 @router.get("/{profile_id}", response_model=dict)
 def get_candidate(profile_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    profile = db.query(CandidateProfile).filter(CandidateProfile.id == profile_id).first()
+    profile = (
+        db.query(CandidateProfile)
+        .join(JobPosting, CandidateProfile.job_id == JobPosting.id)
+        .filter(CandidateProfile.id == profile_id, JobPosting.created_by == current_user.id)
+        .first()
+    )
     if not profile:
-        raise HTTPException(status_code=404, detail="Profile not found")
+        raise HTTPException(status_code=404, detail="Profile not found or access denied")
     return {"data": CandidateProfileOut.model_validate(profile).model_dump()}
 
 
@@ -146,9 +159,14 @@ def update_candidate(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    profile = db.query(CandidateProfile).filter(CandidateProfile.id == profile_id).first()
+    profile = (
+        db.query(CandidateProfile)
+        .join(JobPosting, CandidateProfile.job_id == JobPosting.id)
+        .filter(CandidateProfile.id == profile_id, JobPosting.created_by == current_user.id)
+        .first()
+    )
     if not profile:
-        raise HTTPException(status_code=404, detail="Profile not found")
+        raise HTTPException(status_code=404, detail="Profile not found or access denied")
     for field, val in body.model_dump(exclude_unset=True).items():
         setattr(profile, field, val)
     db.commit()

@@ -11,7 +11,12 @@ router = APIRouter(prefix="/api/jobs", tags=["jobs"])
 
 @router.get("", response_model=dict)
 def list_jobs(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    jobs = db.query(JobPosting).filter(JobPosting.status != "deleted").order_by(JobPosting.created_at.desc()).all()
+    jobs = (
+        db.query(JobPosting)
+        .filter(JobPosting.created_by == current_user.id, JobPosting.status != "deleted")
+        .order_by(JobPosting.created_at.desc())
+        .all()
+    )
     return {"data": [JobOut.model_validate(j).model_dump() for j in jobs]}
 
 
@@ -36,6 +41,8 @@ def get_job(job_id: str, db: Session = Depends(get_db), current_user: User = Dep
     job = db.query(JobPosting).filter(JobPosting.id == job_id).first()
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
+    if str(job.created_by) != str(current_user.id):
+        raise HTTPException(status_code=403, detail="Not authorised to access this job")
     return {"data": JobOut.model_validate(job).model_dump()}
 
 
@@ -44,6 +51,8 @@ def update_job(job_id: str, body: JobUpdate, db: Session = Depends(get_db), curr
     job = db.query(JobPosting).filter(JobPosting.id == job_id).first()
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
+    if str(job.created_by) != str(current_user.id):
+        raise HTTPException(status_code=403, detail="Not authorised to modify this job")
     for field, val in body.model_dump(exclude_unset=True).items():
         setattr(job, field, val)
     db.commit()
