@@ -60,3 +60,31 @@ class SessionReportOut(BaseModel):
     status: str
     feedback_summary: dict
     answers: List[dict]
+
+
+class SessionListItem(BaseModel):
+    """One row in the session history list."""
+    id: str
+    candidate_name: str
+    job_title: str
+    status: str
+    overall_score: float
+    started_at: Optional[datetime]
+    completed_at: Optional[datetime]
+
+
+class DimensionScores(BaseModel):
+    relevance: float
+    clarity: float
+    depth: float
+    confidence: float
+    structure: float
+
+
+class SessionInsights(BaseModel):
+    """Aggregate performance analytics across sessions."""
+    total_sessions: int
+    completed_sessions: int
+    avg_overall_score: float
+    dimensions: DimensionScores
+    weakest_dimension: str

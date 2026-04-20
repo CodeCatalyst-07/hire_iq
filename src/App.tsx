@@ -4,6 +4,7 @@ import LandingPage from './components/LandingPage';
 import Dashboard from './components/Dashboard';
 import JobsPage from './components/JobsPage';
 import JobDetailPage from './components/JobDetailPage';
+import InterviewsPage from './components/InterviewsPage';
 import CandidateProfile from './components/CandidateProfile';
 import InterviewQuestions from './components/InterviewQuestions';
 import MockSession from './components/MockSession';
@@ -30,6 +31,7 @@ function AppRoutes() {
       <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
       <Route path="/jobs" element={<ProtectedRoute><JobsPage /></ProtectedRoute>} />
       <Route path="/jobs/:jobId" element={<ProtectedRoute><JobDetailPage /></ProtectedRoute>} />
+      <Route path="/interviews" element={<ProtectedRoute><InterviewsPage /></ProtectedRoute>} />
       <Route path="/candidate/:id" element={<ProtectedRoute><CandidateProfile /></ProtectedRoute>} />
       <Route path="/interview/questions/:bankId" element={<ProtectedRoute><InterviewQuestions /></ProtectedRoute>} />
       <Route path="/interview/session/:sessionId" element={<ProtectedRoute><MockSession /></ProtectedRoute>} />
