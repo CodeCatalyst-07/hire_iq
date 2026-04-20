@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Briefcase, Users, FileUser, Loader2, ChevronRight,
-  BarChart2, Trophy, AlertCircle, CheckCircle2, Clock, Trash2,
+  BarChart2, Trophy, AlertCircle, CheckCircle2, Clock, Trash2, GitCompare,
 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -61,6 +61,8 @@ export default function InterviewsPage() {
   const [insights, setInsights] = useState<SessionInsights | null>(null);
   const [loading, setLoading] = useState(true);
   const [insightsLoading, setInsightsLoading] = useState(true);
+  const [compareMode, setCompareMode] = useState(false);
+  const [compareIds, setCompareIds] = useState<Set<string>>(new Set());
 
   // Load jobs on mount
   useEffect(() => {
@@ -84,9 +86,24 @@ export default function InterviewsPage() {
     try {
       await deleteSession(sessionId);
       setSessions(prev => prev.filter(s => s.id !== sessionId));
+      setCompareIds(prev => { const n = new Set(prev); n.delete(sessionId); return n; });
     } catch {
       alert('Failed to delete session. Please try again.');
     }
+  };
+
+  const toggleCompare = (id: string) => {
+    setCompareIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) { next.delete(id); }
+      else if (next.size < 3) { next.add(id); }
+      return next;
+    });
+  };
+
+  const handleCompare = () => {
+    if (compareIds.size < 2) return;
+    navigate(`/compare?ids=${Array.from(compareIds).join(',')}`);
   };
 
   const formatDate = (dt: string | null) => {
@@ -167,17 +184,32 @@ export default function InterviewsPage() {
               </span>
             )}
           </div>
-          {/* Job filter */}
-          <select
-            value={selectedJobId}
-            onChange={e => setSelectedJobId(e.target.value)}
-            className="text-sm border border-gray-200 rounded-lg px-3 py-2 text-gray-700 bg-gray-50 focus:outline-none focus:border-primary min-w-[200px]"
-          >
-            <option value="all">All Job Roles</option>
-            {jobs.map(j => (
-              <option key={j.id} value={j.id}>{j.title}</option>
-            ))}
-          </select>
+          <div className="flex items-center gap-3">
+            {sessions.some(s => s.status === 'completed') && (
+              <button
+                onClick={() => { setCompareMode(m => !m); setCompareIds(new Set()); }}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold border transition-all ${
+                  compareMode
+                    ? 'bg-primary text-white border-primary'
+                    : 'bg-white text-gray-700 border-gray-200 hover:border-primary hover:text-primary'
+                }`}
+              >
+                <GitCompare className="w-4 h-4" />
+                {compareMode ? 'Cancel Compare' : 'Compare'}
+              </button>
+            )}
+            {/* Job filter */}
+            <select
+              value={selectedJobId}
+              onChange={e => setSelectedJobId(e.target.value)}
+              className="text-sm border border-gray-200 rounded-lg px-3 py-2 text-gray-700 bg-gray-50 focus:outline-none focus:border-primary min-w-[200px]"
+            >
+              <option value="all">All Job Roles</option>
+              {jobs.map(j => (
+                <option key={j.id} value={j.id}>{j.title}</option>
+              ))}
+            </select>
+          </div>
         </header>
 
         <div className="p-8 flex flex-col gap-8">
@@ -283,8 +315,26 @@ export default function InterviewsPage() {
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: i * 0.05 }}
-                      className="bg-white rounded-2xl border border-gray-200 shadow-sm hover:shadow-md hover:border-primary/30 transition-all p-5 flex items-center gap-5 group"
+                      onClick={compareMode && s.status === 'completed' ? () => toggleCompare(s.id) : undefined}
+                      className={`bg-white rounded-2xl border shadow-sm transition-all p-5 flex items-center gap-5 group ${
+                        compareMode && s.status === 'completed'
+                          ? compareIds.has(s.id)
+                            ? 'border-primary ring-2 ring-primary/20 cursor-pointer hover:shadow-md'
+                            : compareIds.size >= 3
+                              ? 'border-gray-200 opacity-50 cursor-not-allowed'
+                              : 'border-gray-200 hover:border-primary/40 cursor-pointer hover:shadow-md'
+                          : 'border-gray-200 hover:shadow-md hover:border-primary/30'
+                      }`}
                     >
+                      {/* Compare checkbox */}
+                      {compareMode && s.status === 'completed' && (
+                        <div className={`w-5 h-5 rounded border-2 flex items-center justify-center shrink-0 transition-colors ${
+                          compareIds.has(s.id) ? 'border-primary bg-primary' : 'border-gray-300'
+                        }`}>
+                          {compareIds.has(s.id) && <span className="text-white text-xs font-bold">✓</span>}
+                        </div>
+                      )}
+
                       {/* Avatar */}
                       <div className="w-12 h-12 rounded-full bg-purple-100 flex items-center justify-center font-bold text-primary text-sm shrink-0">
                         {initials(s.candidate_name)}
@@ -343,6 +393,26 @@ export default function InterviewsPage() {
           </div>
         </div>
       </main>
+
+      {/* Floating compare bar */}
+      <AnimatePresence>
+        {compareMode && compareIds.size >= 2 && (
+          <motion.div
+            initial={{ y: 80, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 80, opacity: 0 }}
+            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-4 bg-gray-900 text-white px-6 py-3.5 rounded-2xl shadow-2xl"
+          >
+            <span className="text-sm font-bold">{compareIds.size} candidates selected</span>
+            <button
+              onClick={handleCompare}
+              className="flex items-center gap-2 px-5 py-2 bg-primary rounded-xl text-sm font-bold hover:bg-primary/90 transition-colors"
+            >
+              <GitCompare className="w-4 h-4" /> Compare Selected →
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

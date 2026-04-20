@@ -9,7 +9,7 @@ from app.models.job import JobPosting
 from app.models.user import User
 from app.schemas.interview import (
     StartSessionRequest, SessionOut, SubmitAnswerRequest, AnswerOut,
-    SessionReportOut, SessionListItem, SessionInsights, DimensionScores,
+    SessionReportOut, SessionListItem, SessionInsights, DimensionScores, CompareSessionItem,
 )
 from app.services.interview_service import evaluate_answer
 from app.utils.auth import get_current_user
@@ -134,6 +134,66 @@ def get_insights(
         weakest_dimension=weakest,
     )
     return {"data": insights.model_dump()}
+
+
+# ── Compare sessions (must be before /{session_id}) ──────────────────────────
+
+@router.get("/compare", response_model=dict)
+def compare_sessions(
+    ids: str,          # comma-separated session IDs, max 3
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Return aggregated dimension scores for up to 3 sessions side by side.
+    Ownership check: session's job must belong to current_user.
+    """
+    session_ids = [sid.strip() for sid in ids.split(",") if sid.strip()][:3]
+    results = []
+
+    for sid in session_ids:
+        session = db.query(InterviewSession).filter(InterviewSession.id == sid).first()
+        if not session:
+            continue
+
+        # Ownership check
+        job = db.query(JobPosting).filter(JobPosting.id == session.job_id).first()
+        if not job or str(job.created_by) != str(current_user.id):
+            continue
+
+        # Candidate name
+        candidate = db.query(Candidate).filter(Candidate.id == session.candidate_id).first()
+        candidate_name = candidate.name if candidate else "Unknown"
+
+        # Aggregate dimension scores across all answers
+        answers = db.query(InterviewAnswer).filter(InterviewAnswer.session_id == sid).all()
+        dim_sums = {"relevance": 0.0, "clarity": 0.0, "depth": 0.0, "confidence": 0.0, "structure": 0.0}
+        dim_counts = {k: 0 for k in dim_sums}
+        for a in answers:
+            for dim, col in [
+                ("relevance", a.relevance_score), ("clarity", a.clarity_score),
+                ("depth", a.depth_score), ("confidence", a.confidence_score),
+                ("structure", a.structure_score),
+            ]:
+                if col is not None:
+                    dim_sums[dim] += float(col)
+                    dim_counts[dim] += 1
+
+        dims = {
+            k: round(dim_sums[k] / dim_counts[k], 1) if dim_counts[k] > 0 else 0.0
+            for k in dim_sums
+        }
+
+        results.append(CompareSessionItem(
+            session_id=str(session.id),
+            candidate_name=candidate_name,
+            job_title=job.title,
+            overall_score=float(session.overall_score or 0),
+            dimensions=dims,
+            feedback_summary=session.feedback_summary or {},
+        ).model_dump())
+
+    return {"data": results}
 
 
 # ── Create session ───────────────────────────────────────────────────────────

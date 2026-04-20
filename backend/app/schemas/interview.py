@@ -88,3 +88,32 @@ class SessionInsights(BaseModel):
     avg_overall_score: float
     dimensions: DimensionScores
     weakest_dimension: str
+
+
+# ── Templates ────────────────────────────────────────────────────────────────
+
+class SaveTemplateRequest(BaseModel):
+    name: str
+    job_role: str
+    questions: list
+
+
+class TemplateOut(BaseModel):
+    id: uuid.UUID
+    name: str
+    job_role: str
+    questions: list
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+# ── Comparison ───────────────────────────────────────────────────────────────
+
+class CompareSessionItem(BaseModel):
+    session_id: str
+    candidate_name: str
+    job_title: str
+    overall_score: float
+    dimensions: dict        # {relevance, clarity, depth, confidence, structure}
+    feedback_summary: dict  # {top_strength, top_gap}

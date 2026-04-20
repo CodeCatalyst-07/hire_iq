@@ -55,6 +55,27 @@ export const deleteSession = async (sessionId: string): Promise<void> => {
   await client.delete(`/api/sessions/${sessionId}`);
 };
 
+export const compareSessions = async (ids: string[]) => {
+  const res = await client.get('/api/sessions/compare', { params: { ids: ids.join(',') } });
+  return res.data.data as CompareSessionItem[];
+};
+
+// ── Templates ──────────────────────────────────────────────────────────────
+
+export const saveTemplate = async (name: string, jobRole: string, questions: unknown[]) => {
+  const res = await client.post('/api/templates', { name, job_role: jobRole, questions });
+  return res.data.data as TemplateItem;
+};
+
+export const listTemplates = async (jobRole?: string) => {
+  const res = await client.get('/api/templates', { params: jobRole ? { job_role: jobRole } : {} });
+  return res.data.data as TemplateItem[];
+};
+
+export const deleteTemplate = async (id: string): Promise<void> => {
+  await client.delete(`/api/templates/${id}`);
+};
+
 // ── Types ──────────────────────────────────────────────────────────────────
 
 export type SessionListItem = {
@@ -79,4 +100,31 @@ export type SessionInsights = {
     structure: number;
   };
   weakest_dimension: string;
+}
+
+export type CompareSessionItem = {
+  session_id: string;
+  candidate_name: string;
+  job_title: string;
+  overall_score: number;
+  dimensions: {
+    relevance: number;
+    clarity: number;
+    depth: number;
+    confidence: number;
+    structure: number;
+  };
+  feedback_summary: {
+    top_strength?: string;
+    top_gap?: string;
+    total_answers?: number;
+  };
+}
+
+export type TemplateItem = {
+  id: string;
+  name: string;
+  job_role: string;
+  questions: unknown[];
+  created_at: string;
 }
