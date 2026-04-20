@@ -53,7 +53,7 @@ export const getInsights = async (jobId?: string) => {
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
-export interface SessionListItem {
+export type SessionListItem = {
   id: string;
   candidate_name: string;
   job_title: string;
@@ -63,7 +63,7 @@ export interface SessionListItem {
   completed_at: string | null;
 }
 
-export interface SessionInsights {
+export type SessionInsights = {
   total_sessions: number;
   completed_sessions: number;
   avg_overall_score: number;

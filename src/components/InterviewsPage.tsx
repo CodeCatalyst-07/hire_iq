@@ -6,7 +6,8 @@ import {
 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { listSessions, getInsights, SessionListItem, SessionInsights } from '../api/interviews';
+import { listSessions, getInsights } from '../api/interviews';
+import type { SessionListItem, SessionInsights } from '../api/interviews';
 import { listJobs } from '../api/jobs';
 
 interface Job { id: string; title: string; status: string; }
