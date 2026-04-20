@@ -2,9 +2,9 @@ import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   Briefcase, Users, FileUser, ArrowLeft, Loader2, ChevronRight,
-  UploadCloud, Brain, Target, TrendingUp, UserCheck,
+  UploadCloud, Target, TrendingUp, UserCheck,
 } from 'lucide-react';
-import { Link, useParams, useNavigate } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { getJob, getJobStats, updateJob } from '../api/jobs';
 import { listCandidates, uploadResume } from '../api/candidates';
@@ -31,7 +31,6 @@ const STATUS_CONFIG: Record<string, { label: string; bg: string; text: string }>
 export default function JobDetailPage() {
   const { jobId } = useParams<{ jobId: string }>();
   const { user, logout } = useAuth();
-  const navigate = useNavigate();
 
   const [job, setJob] = useState<Job | null>(null);
   const [stats, setStats] = useState<Stats | null>(null);
