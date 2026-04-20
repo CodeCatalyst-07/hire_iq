@@ -118,7 +118,7 @@ export default function ComparisonPage() {
             {/* Candidate header cards */}
             <div className="grid gap-4" style={{ gridTemplateColumns: `200px repeat(${candidates.length}, 1fr)` }}>
               <div /> {/* spacer */}
-              {candidates.map((c, _) => (
+              {candidates.map((c, i) => (
                 <motion.div key={c.session_id}
                   initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.08 }}
                   className={`p-5 rounded-2xl border-2 flex flex-col items-center text-center gap-3 relative ${i === winnerIdx ? 'border-emerald-400 bg-emerald-50' : 'border-gray-200 bg-white'}`}>
