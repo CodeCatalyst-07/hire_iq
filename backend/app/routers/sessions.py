@@ -279,3 +279,27 @@ def get_report(
             "answers": answers_data,
         }
     }
+
+
+# ── Delete session ───────────────────────────────────────────────────────────
+
+@router.delete("/{session_id}", status_code=204)
+def delete_session(
+    session_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Delete a session and all its answers (cascade via FK).
+    Ownership is verified by checking the session's job belongs to current_user.
+    """
+    session = db.query(InterviewSession).filter(InterviewSession.id == session_id).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    job = db.query(JobPosting).filter(JobPosting.id == session.job_id).first()
+    if not job or str(job.created_by) != str(current_user.id):
+        raise HTTPException(status_code=403, detail="Not authorised to delete this session")
+
+    db.delete(session)
+    db.commit()

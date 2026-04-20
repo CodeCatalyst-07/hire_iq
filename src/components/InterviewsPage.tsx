@@ -2,11 +2,11 @@ import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Briefcase, Users, FileUser, Loader2, ChevronRight,
-  BarChart2, Trophy, AlertCircle, CheckCircle2, Clock,
+  BarChart2, Trophy, AlertCircle, CheckCircle2, Clock, Trash2,
 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { listSessions, getInsights } from '../api/interviews';
+import { listSessions, getInsights, deleteSession } from '../api/interviews';
 import type { SessionListItem, SessionInsights } from '../api/interviews';
 import { listJobs } from '../api/jobs';
 
@@ -78,6 +78,16 @@ export default function InterviewsPage() {
       .catch(() => {})
       .finally(() => { setLoading(false); setInsightsLoading(false); });
   }, [selectedJobId]);
+
+  const handleDelete = async (sessionId: string, candidateName: string) => {
+    if (!window.confirm(`Are you sure you want to delete ${candidateName}'s session? This cannot be undone.`)) return;
+    try {
+      await deleteSession(sessionId);
+      setSessions(prev => prev.filter(s => s.id !== sessionId));
+    } catch {
+      alert('Failed to delete session. Please try again.');
+    }
+  };
 
   const formatDate = (dt: string | null) => {
     if (!dt) return '—';
@@ -300,7 +310,7 @@ export default function InterviewsPage() {
                       {/* Status badge */}
                       <StatusBadge status={s.status} />
 
-                      {/* View report button */}
+                      {/* View report / Resume button */}
                       {s.status === 'completed' ? (
                         <button
                           onClick={() => navigate(`/interview/feedback/${s.id}`)}
@@ -316,6 +326,15 @@ export default function InterviewsPage() {
                           Resume <ChevronRight className="w-3.5 h-3.5" />
                         </button>
                       )}
+
+                      {/* Delete button */}
+                      <button
+                        onClick={() => handleDelete(s.id, s.candidate_name)}
+                        title="Delete session"
+                        className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors shrink-0"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     </motion.div>
                   ))}
                 </AnimatePresence>

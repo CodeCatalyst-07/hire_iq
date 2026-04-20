@@ -51,6 +51,10 @@ export const getInsights = async (jobId?: string) => {
   return res.data.data as SessionInsights;
 };
 
+export const deleteSession = async (sessionId: string): Promise<void> => {
+  await client.delete(`/api/sessions/${sessionId}`);
+};
+
 // ── Types ──────────────────────────────────────────────────────────────────
 
 export type SessionListItem = {
