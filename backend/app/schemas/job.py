@@ -39,3 +39,13 @@ class JobOut(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class JobStats(BaseModel):
+    job_id: str
+    total_applicants: int
+    avg_match_score: float
+    shortlisted: int
+    pending: int
+    rejected: int
+    shortlist_rate: float

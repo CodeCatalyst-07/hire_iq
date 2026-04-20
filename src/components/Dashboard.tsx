@@ -99,12 +99,12 @@ export default function Dashboard() {
         </div>
 
         <nav className="flex flex-col gap-2 flex-1">
-          <a href="#" className="flex items-center gap-3 px-3 py-2 rounded-lg bg-purple-50 border-l-4 border-primary text-primary font-medium">
+          <Link to="/dashboard" className="flex items-center gap-3 px-3 py-2 rounded-lg bg-purple-50 border-l-4 border-primary text-primary font-medium">
             <Users className="w-5 h-5" /> Candidates
-          </a>
-          <a href="#" className="flex items-center gap-3 px-3 py-2 rounded-lg text-gray-500 hover:bg-purple-50 hover:text-primary transition-all font-medium border-l-4 border-transparent">
+          </Link>
+          <Link to="/jobs" className="flex items-center gap-3 px-3 py-2 rounded-lg text-gray-500 hover:bg-purple-50 hover:text-primary transition-all font-medium border-l-4 border-transparent">
             <Briefcase className="w-5 h-5" /> Jobs
-          </a>
+          </Link>
           <a href="#" className="flex items-center gap-3 px-3 py-2 rounded-lg text-gray-500 hover:bg-purple-50 hover:text-primary transition-all font-medium border-l-4 border-transparent">
             <FileUser className="w-5 h-5" /> Interviews
           </a>
