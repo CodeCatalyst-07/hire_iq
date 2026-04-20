@@ -1,12 +1,15 @@
 import { useEffect, useState } from 'react';
-import { ArrowLeft, Brain, Code2, Users, Target, Copy, Play, Loader2 } from 'lucide-react';
+import { ArrowLeft, Brain, Code2, Users, Target, Copy, Play, Loader2, FolderGit2 } from 'lucide-react';
 import { Link, useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { getQuestionBank, startSession } from '../api/interviews';
 
 const CATEGORY_ICONS: Record<string, any> = {
   technical: Code2, behavioral: Users, skill_gap: Target,
-  culture_fit: Users, motivation: Brain,
+  culture_fit: Users, motivation: Brain, project_based: FolderGit2,
 };
+
+// project_based first, then the rest in a fixed order
+const CATEGORY_ORDER = ['project_based', 'technical', 'skill_gap', 'behavioral', 'culture_fit', 'motivation'];
 
 interface Question {
   id: string; category: string; question: string; purpose: string;
@@ -49,7 +52,8 @@ export default function InterviewQuestions() {
     setTimeout(() => setCopied(null), 2000);
   };
 
-  const categories = ['All', ...Array.from(new Set(questions.map(q => q.category)))];
+  const categories = ['All', ...Array.from(new Set(questions.map(q => q.category)))
+    .sort((a, b) => (CATEGORY_ORDER.indexOf(a) ?? 99) - (CATEGORY_ORDER.indexOf(b) ?? 99))];
   const filtered = activeCategory === 'All' ? questions : questions.filter(q => q.category === activeCategory);
 
   const grouped = filtered.reduce((acc, q) => {
@@ -57,6 +61,12 @@ export default function InterviewQuestions() {
     acc[q.category].push(q);
     return acc;
   }, {} as Record<string, Question[]>);
+
+  // Always render project_based first, then follow CATEGORY_ORDER
+  const sortedGrouped = Object.entries(grouped).sort(
+    ([a], [b]) => (CATEGORY_ORDER.indexOf(a) === -1 ? 99 : CATEGORY_ORDER.indexOf(a))
+                - (CATEGORY_ORDER.indexOf(b) === -1 ? 99 : CATEGORY_ORDER.indexOf(b))
+  );
 
   if (loading) return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -117,7 +127,7 @@ export default function InterviewQuestions() {
           </div>
         ) : (
           <div className="flex flex-col gap-8">
-            {Object.entries(grouped).map(([category, qs]) => {
+            {sortedGrouped.map(([category, qs]) => {
               const Icon = CATEGORY_ICONS[category] || Brain;
               return (
                 <div key={category}>

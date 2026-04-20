@@ -7,13 +7,27 @@ logger = logging.getLogger(__name__)
 
 
 def generate_questions(parsed_profile: dict, job_title: str, required_skills: list, nice_to_have: list, missing_skills: list) -> list[dict]:
-    prompt = f"""You are an expert technical interviewer. Generate exactly 10 interview questions for this candidate.
+    projects = parsed_profile.get('projects', []) or []
+    has_projects = len(projects) > 0
+
+    # Format top 3 projects for the prompt (keep it tight)
+    project_lines = "\n".join(
+        f"  - {p.get('name', 'Unnamed Project')}: {str(p.get('description', ''))[:150].strip()} "
+        f"(Technologies: {', '.join(p.get('technologies', [])[:5])})"
+        for p in projects[:3]
+    ) if has_projects else "None listed"
+
+    total_q = 12 if has_projects else 10
+    project_distribution = "- 2 Project Based (reference ONLY the specific projects listed above — ask about challenges faced, key decisions made, technologies chosen, or measurable outcomes)" if has_projects else ""
+    project_context = f"\nCANDIDATE PROJECTS:\n{project_lines}" if has_projects else ""
+
+    prompt = f"""You are an expert technical interviewer. Generate exactly {total_q} interview questions for this candidate.
 
 CANDIDATE PROFILE SUMMARY:
 - Name: {parsed_profile.get('name', 'Candidate')}
 - Current Title: {parsed_profile.get('current_title', 'N/A')}
 - Years of Experience: {parsed_profile.get('total_years_experience', 0)}
-- Key Skills: {', '.join(parsed_profile.get('skills', {}).get('hard_skills', [])[:10])}
+- Key Skills: {', '.join(parsed_profile.get('skills', {}).get('hard_skills', [])[:10])}{project_context}
 
 JOB: {job_title}
 Required Skills: {', '.join(required_skills)}
@@ -26,6 +40,12 @@ Generate questions in this distribution:
 - 2 Behavioral (STAR-format)
 - 1 Culture Fit
 - 1 Motivation/Ambition
+{project_distribution}
+
+IMPORTANT for Project Based questions (if any):
+- Reference the EXACT project names from the candidate's profile above
+- Do NOT generate generic project questions — make them specific to those projects
+- Use category value: "project_based"
 
 Return ONLY a JSON array, no markdown, no code fences:
 [
