@@ -3,15 +3,15 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Users, FileUser, Briefcase, Plus, Search, Filter, ChevronRight, X, Loader2, UploadCloud } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { listJobs, createJob } from '../api/jobs';
-import { uploadResume, listCandidates, getDashboardStats } from '../api/candidates';
+import { listJobs, createJob, getJobStats } from '../api/jobs';
+import { uploadResume, listCandidates } from '../api/candidates';
 
 interface Job { id: string; title: string; status: string; }
 interface Candidate {
   id: string; total_score: number; skill_match_pct: number; status: string; parse_status: string;
   candidate: { name: string; email: string | null; };
 }
-interface Stats { total_resumes: number; shortlisted: number; avg_match_score: number; pending_review: number; }
+interface Stats { total_applicants: number; shortlisted: number; avg_match_score: number; pending: number; shortlist_rate: number; }
 
 export default function Dashboard() {
   const { user, logout } = useAuth();
@@ -38,15 +38,22 @@ export default function Dashboard() {
       setJobs(data);
       if (data.length > 0) setSelectedJob(data[0]);
     }).catch(() => {});
-    getDashboardStats().then(setStats).catch(() => {});
   }, []);
 
-  // Load candidates when job changes
+  // Reload candidates AND stats whenever selected job changes
   useEffect(() => {
-    if (!selectedJob) return;
+    if (!selectedJob) {
+      setCandidates([]);
+      setStats(null);
+      return;
+    }
     setLoading(true);
-    listCandidates(selectedJob.id).then((data) => {
-      setCandidates(data.items || []);
+    Promise.all([
+      listCandidates(selectedJob.id),
+      getJobStats(selectedJob.id),
+    ]).then(([candidateData, statsData]) => {
+      setCandidates(candidateData.items || []);
+      setStats(statsData);
     }).catch(() => {}).finally(() => setLoading(false));
   }, [selectedJob]);
 
@@ -156,10 +163,10 @@ export default function Dashboard() {
           {/* Stats */}
           <div className="grid grid-cols-4 gap-6 mb-8">
             {[
-              { label: 'Total Resumes', value: stats?.total_resumes ?? '—', color: 'text-gray-900' },
+              { label: 'Total Resumes', value: stats?.total_applicants ?? '—', color: 'text-gray-900' },
               { label: 'Shortlisted', value: stats?.shortlisted ?? '—', color: 'text-gray-900' },
               { label: 'Avg Match Score', value: stats ? `${stats.avg_match_score}%` : '—', color: 'text-gray-900' },
-              { label: 'Pending Review', value: stats?.pending_review ?? '—', color: 'text-amber-600' },
+              { label: 'Pending Review', value: stats?.pending ?? '—', color: 'text-amber-600' },
             ].map((kpi, i) => (
               <div key={i} className="p-6 rounded-xl bg-white border border-gray-200 shadow-sm flex flex-col gap-2">
                 <span className="text-xs font-bold text-gray-500 tracking-wide uppercase">{kpi.label}</span>
