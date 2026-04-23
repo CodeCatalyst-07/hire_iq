@@ -318,9 +318,9 @@ export default function Dashboard() {
                   <p className="text-sm text-gray-600">Uploading for: <span className="font-bold text-primary">{selectedJob.title}</span></p>
                   <label className="block w-full border-2 border-dashed border-gray-300 rounded-xl p-8 text-center hover:border-primary transition-colors cursor-pointer group">
                     <UploadCloud className="w-10 h-10 text-gray-300 group-hover:text-primary mx-auto mb-3 transition-colors" />
-                    <p className="text-sm font-medium text-gray-600">{uploadFile ? uploadFile.name : 'Click to upload PDF, DOCX, or image (JPG, PNG, TIFF)'}</p>
+                    <p className="text-sm font-medium text-gray-600">{uploadFile ? uploadFile.name : 'Click to upload PDF or DOCX'}</p>
                     <p className="text-xs text-gray-400 mt-1">Max 10MB</p>
-                    <input type="file" accept=".pdf,.docx,.jpg,.jpeg,.png,.tiff,.tif,.bmp,.webp" className="hidden"
+                    <input type="file" accept=".pdf,.docx" className="hidden"
                       onChange={e => setUploadFile(e.target.files?.[0] || null)} />
                   </label>
                   {uploadMsg && (
