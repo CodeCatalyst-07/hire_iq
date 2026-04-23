@@ -89,7 +89,7 @@ Return this exact JSON structure:
   "parse_confidence": 85
 }}"""
 
-    raw = await async_call_gemini(prompt)
+    raw = await async_call_gemini(prompt, max_output_tokens=1500)
 
     # Strip any accidental markdown fences (safety net)
     cleaned = re.sub(r"```(?:json)?", "", raw).strip().rstrip("`")

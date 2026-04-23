@@ -67,7 +67,7 @@ IMPORTANT: Return ONLY a valid JSON array. No markdown formatting, no code fence
 ]"""
 
     try:
-        raw = await async_call_gemini(prompt)
+        raw = await async_call_gemini(prompt, max_output_tokens=1500)
     except Exception as e:
         logger.error(f"[generate_questions] Gemini call failed: {type(e).__name__}: {e}")
         return []

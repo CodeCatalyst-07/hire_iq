@@ -20,17 +20,28 @@ def get_gemini_model():
     return genai.GenerativeModel(_model_name)
 
 
-def call_gemini(prompt: str, max_retries: int = 3) -> str:
-    """Call Gemini API with exponential backoff on quota errors (sync)."""
+def call_gemini(prompt: str, max_retries: int = 3, max_output_tokens: int | None = None) -> str:
+    """Call Gemini API with exponential backoff on quota errors (sync).
+
+    Args:
+        prompt: The text prompt to send.
+        max_retries: Number of retry attempts on quota/rate-limit errors.
+        max_output_tokens: Hard cap on response length. Pass None (default)
+            for unconstrained output (e.g. evaluate_answer). Pass an integer
+            for structured JSON calls (e.g. parse_resume, generate_questions).
+    """
     model = get_gemini_model()
+    generation_config = genai.types.GenerationConfig(
+        max_output_tokens=max_output_tokens,
+    ) if max_output_tokens is not None else None
     last_err = None
 
     for attempt in range(max_retries):
         try:
-            logger.info(f"[Gemini] Attempt {attempt + 1}/{max_retries} — model: {_model_name}")
-            response = model.generate_content(prompt)
+            logger.info(f"[Gemini] Attempt {attempt + 1}/{max_retries} — model: {_model_name} | max_output_tokens: {max_output_tokens}")
+            response = model.generate_content(prompt, generation_config=generation_config)
 
-            # ── Opt 4B: token usage logging (set max_output_tokens after observing peaks) ──
+            # ── Opt 4B: token usage logging ──────────────────────────────────────
             try:
                 output_tokens = response.usage_metadata.candidates_token_count
                 logger.info(f"[TOKEN USAGE] output_tokens={output_tokens}")
@@ -60,10 +71,14 @@ def call_gemini(prompt: str, max_retries: int = 3) -> str:
     raise last_err
 
 
-async def async_call_gemini(prompt: str, max_retries: int = 3) -> str:
+async def async_call_gemini(
+    prompt: str,
+    max_retries: int = 3,
+    max_output_tokens: int | None = None,
+) -> str:
     """Non-blocking Gemini call — runs sync call_gemini in a thread pool.
 
     FastAPI's event loop is never blocked: the sync SDK call (including
     any time.sleep() retries) executes in asyncio's default thread executor.
     """
-    return await asyncio.to_thread(call_gemini, prompt, max_retries)
+    return await asyncio.to_thread(call_gemini, prompt, max_retries, max_output_tokens)
