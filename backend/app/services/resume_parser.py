@@ -15,20 +15,23 @@ logger = logging.getLogger(__name__)
 # maxsize=100 entries, ttl=3600s (1 hour). Process-local — cleared on restart.
 _parse_cache: TTLCache = TTLCache(maxsize=100, ttl=3600)
 
-# ── OCR: minimum characters to consider primary extraction successful ─────────
-MIN_TEXT_LENGTH = 100   # chars after .strip() — anything less triggers OCR
-MIN_OCR_RESULT  = 50    # chars after OCR — below this the scan is unreadable
+# ── OCR thresholds ───────────────────────────────────────────────────────────
+MIN_TEXT_LENGTH = 100   # chars after .strip() — below this triggers OCR
+MIN_OCR_RESULT  = 50    # chars after OCR — below this scan is unreadable
 
-# ── Conditional OCR imports (Tesseract not required for local dev) ────────────
+# ── Conditional EasyOCR import (pure Python — no system deps) ────────────────
+# easyocr downloads ~100 MB of ML models on first initialisation (cached
+# in ~/.EasyOCR/).  The import itself is fast; Reader() init is slow (once).
 try:
-    import pytesseract
-    from pdf2image import convert_from_bytes
-    from PIL import Image
-    TESSERACT_AVAILABLE = True
-    logger.info("[OCR] pytesseract, pdf2image, Pillow loaded successfully")
+    import easyocr as _easyocr_module
+    EASYOCR_AVAILABLE = True
+    logger.info("[OCR] easyocr loaded successfully")
 except ImportError:
-    TESSERACT_AVAILABLE = False
-    logger.warning("[OCR] pytesseract/pdf2image/Pillow not installed — OCR fallback disabled")
+    EASYOCR_AVAILABLE = False
+    logger.warning("[OCR] easyocr not installed — OCR fallback disabled")
+
+# Lazy singleton — initialised once on first OCR call, reused for all requests
+_ocr_reader = None
 
 # Image extensions that go straight to OCR (no text layer to try first)
 _IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".tiff", ".tif", ".bmp", ".webp"}
@@ -38,63 +41,76 @@ _IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".tiff", ".tif", ".bmp", ".webp"}
 # Internal helpers
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _extract_text_with_ocr(file_bytes: bytes, source_hint: str = "file") -> str:
-    """Convert PDF pages or raw image bytes to text via Tesseract OCR.
+def _get_ocr_reader():
+    """Return the shared EasyOCR Reader, initialising it on first call."""
+    global _ocr_reader
+    if _ocr_reader is None:
+        logger.info("[OCR] Initialising EasyOCR Reader (models download on first run)…")
+        _ocr_reader = _easyocr_module.Reader(["en"], gpu=False, verbose=False)
+        logger.info("[OCR] EasyOCR Reader ready")
+    return _ocr_reader
 
-    Called only when:
-      (a) primary PDF extraction returned < MIN_TEXT_LENGTH characters, OR
-      (b) the uploaded file is a direct image (JPG, PNG, TIFF, …).
+
+def _extract_text_with_ocr(file_bytes: bytes, source_hint: str = "file") -> str:
+    """Run EasyOCR on a scanned PDF or image file.
+
+    For PDFs, PyMuPDF (already a project dependency) renders each page to PNG
+    bytes at 300 DPI — no poppler / pdf2image / system package required.
+    For image files, EasyOCR reads the raw bytes directly.
 
     Raises ValueError with a user-readable message on all failure modes.
     """
-    if not TESSERACT_AVAILABLE:
+    if not EASYOCR_AVAILABLE:
         raise ValueError(
             "OCR service unavailable. Please upload a digital PDF or DOCX file instead."
         )
 
-    # ── Path 1: PDF → images via pdf2image, then OCR each page ───────────────
+    reader = _get_ocr_reader()
+
+    # ── Path 1: scanned PDF — render pages with PyMuPDF → OCR each page ──────
     try:
-        logger.info(f"[OCR] Running pdf2image on {source_hint} (dpi=300)")
-        images = convert_from_bytes(file_bytes, dpi=300)
+        import fitz  # PyMuPDF — already in requirements.txt
+        doc = fitz.open(stream=file_bytes, filetype="pdf")
         text_parts: list[str] = []
-        for page_num, image in enumerate(images, start=1):
-            page_text = pytesseract.image_to_string(image, lang="eng")
-            logger.info(f"[OCR] Page {page_num}: {len(page_text)} chars extracted")
+        # 300 DPI ≈ scale factor 300/72 ≈ 4.17 from PyMuPDF's 72-DPI base
+        mat = fitz.Matrix(300 / 72, 300 / 72)
+        for page_num, page in enumerate(doc, start=1):
+            png_bytes = page.get_pixmap(matrix=mat).tobytes("png")
+            results: list[str] = reader.readtext(png_bytes, detail=0)
+            page_text = " ".join(results)
+            logger.info(f"[OCR] Page {page_num}: {len(page_text)} chars")
             text_parts.append(page_text)
         return "\n".join(text_parts).strip()
 
     except Exception as pdf_err:
-        logger.info(f"[OCR] pdf2image path failed ({type(pdf_err).__name__}), trying direct Image.open")
+        logger.info(
+            f"[OCR] PDF render path failed ({type(pdf_err).__name__}): {pdf_err} "
+            "— trying direct image OCR"
+        )
 
-    # ── Path 2: direct image file (JPG, PNG, TIFF, …) ────────────────────────
+    # ── Path 2: direct image file (JPG, PNG, TIFF, BMP, WEBP) ────────────────
     try:
-        image = Image.open(io.BytesIO(file_bytes))
-        text = pytesseract.image_to_string(image, lang="eng").strip()
+        results = reader.readtext(file_bytes, detail=0)
+        text = " ".join(results).strip()
         logger.info(f"[OCR] Direct image OCR: {len(text)} chars extracted")
         return text
-
-    except pytesseract.TesseractNotFoundError:
-        raise ValueError(
-            "OCR service unavailable. Please upload a digital PDF or DOCX file instead."
-        )
     except Exception as img_err:
         raise ValueError(f"OCR extraction failed: {img_err}")
 
 
 def extract_text(file_bytes: bytes, filename: str) -> tuple[str, bool]:
-    """Extract raw text from PDF, DOCX, or image file.
+    """Extract raw text from a PDF, DOCX, or image file.
 
     Returns:
-        (text, used_ocr) — used_ocr=True when Tesseract was invoked.
+        (text, used_ocr) — used_ocr=True when EasyOCR was invoked.
 
     Decision tree:
-        .docx  → python-docx (unchanged)
-        .pdf   → pdfplumber → PyMuPDF if empty → OCR if < MIN_TEXT_LENGTH
-        image  → OCR directly
+        .docx  → python-docx                          (unchanged)
+        .pdf   → pdfplumber → PyMuPDF → EasyOCR OCR  (if < MIN_TEXT_LENGTH)
+        image  → EasyOCR directly
         other  → raises ValueError
     """
     fname = filename.lower()
-    used_ocr = False
 
     # ── DOCX ──────────────────────────────────────────────────────────────────
     if fname.endswith(".docx"):
@@ -113,22 +129,22 @@ def extract_text(file_bytes: bytes, filename: str) -> tuple[str, bool]:
             doc = fitz.open(stream=file_bytes, filetype="pdf")
             text = "\n".join(page.get_text() for page in doc)
 
-        # Stage 3: OCR if both text-layer methods returned insufficient text
+        # Stage 3: EasyOCR if both text-layer methods returned insufficient text
         if len(text.strip()) < MIN_TEXT_LENGTH:
             logger.info(
                 f"[OCR] Primary extraction returned {len(text.strip())} chars "
-                f"(threshold={MIN_TEXT_LENGTH}) — falling back to PyTesseract"
+                f"(threshold={MIN_TEXT_LENGTH}) — falling back to EasyOCR"
             )
             text = _extract_text_with_ocr(file_bytes, source_hint=filename)
-            logger.info(f"[OCR] Extracted {len(text)} characters via Tesseract")
-            used_ocr = True
+            logger.info(f"[OCR] Extracted {len(text)} characters via EasyOCR")
+            return text, True
 
-        return text, used_ocr
+        return text, False
 
     # ── Images (JPG, PNG, TIFF, BMP, WEBP) ───────────────────────────────────
     ext = os.path.splitext(fname)[1]
     if ext in _IMAGE_EXTENSIONS:
-        logger.info(f"[OCR] Image upload detected ({ext}) — running PyTesseract directly")
+        logger.info(f"[OCR] Image upload detected ({ext}) — running EasyOCR directly")
         text = _extract_text_with_ocr(file_bytes, source_hint=filename)
         logger.info(f"[OCR] Extracted {len(text)} characters from image")
         return text, True
@@ -161,10 +177,10 @@ async def parse_resume(file_bytes: bytes, filename: str) -> dict:
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
 
-    # ── OCR readability check ─────────────────────────────────────────────────
+    # ── OCR readability gate ──────────────────────────────────────────────────
     if used_ocr and len(resume_text.strip()) < MIN_OCR_RESULT:
         logger.warning(
-            f"[OCR] Extracted only {len(resume_text.strip())} chars after OCR — "
+            f"[OCR] Only {len(resume_text.strip())} chars after EasyOCR — "
             "image likely blurry or unreadable"
         )
         raise HTTPException(
@@ -223,7 +239,7 @@ Return this exact JSON structure:
   "parse_confidence": 85
 }}"""
 
-    # OCR text is noisier → no token cap. Digital text uses 1500-token cap (Opt 4B).
+    # OCR text is noisier → no token cap. Digital text keeps 1500-token cap (Opt 4B).
     if used_ocr:
         raw = await async_call_gemini(prompt)
     else:
@@ -236,7 +252,6 @@ Return this exact JSON structure:
         _parse_cache[file_hash] = result  # store in cache
         return result
     except json.JSONDecodeError:
-        # Return a minimal fallback so we don't crash the upload
         return {
             "name": "Unknown",
             "email": None,
