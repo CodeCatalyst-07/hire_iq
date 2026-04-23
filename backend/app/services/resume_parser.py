@@ -1,11 +1,14 @@
 import hashlib
 import io
 import json
+import logging
 import re
 import pdfplumber
 import docx
 from cachetools import TTLCache
 from app.utils.gemini import async_call_gemini
+
+logger = logging.getLogger(__name__)
 
 # ── Opt 3: in-process TTL cache keyed on MD5 of raw file bytes ──────────────
 # maxsize=100 entries, ttl=3600s (1 hour). Process-local — cleared on restart.
@@ -39,11 +42,13 @@ async def parse_resume(file_bytes: bytes, filename: str) -> dict:
     # ── Cache lookup ─────────────────────────────────────────────────────────
     file_hash = hashlib.md5(file_bytes).hexdigest()
     if file_hash in _parse_cache:
-        import logging
-        logging.getLogger(__name__).info(f"[parse_resume] Cache HIT for hash {file_hash[:8]}…")
+        logger.info(f"[parse_resume] Cache HIT for hash {file_hash[:8]}…")
         return _parse_cache[file_hash]
 
     resume_text = extract_text(file_bytes, filename)
+    logger.info(f"[parse_resume] Extracted {len(resume_text)} chars from '{filename}'")
+    if not resume_text.strip():
+        logger.warning(f"[parse_resume] extract_text returned empty string for '{filename}'")
 
     prompt = f"""You are an expert resume parser. Extract all information from this resume.
 
@@ -89,15 +94,25 @@ Return this exact JSON structure:
   "parse_confidence": 85
 }}"""
 
-    raw = await async_call_gemini(prompt, max_output_tokens=1500)
+    # No max_output_tokens cap — resume JSON length is unbounded.
+    # A 1500-token cap causes truncated JSON for dense resumes, which
+    # fails json.loads() and returns the 'Unknown' fallback silently.
+    raw = await async_call_gemini(prompt)
+    logger.info(f"[parse_resume] Gemini response length: {len(raw)} chars")
 
     # Strip any accidental markdown fences (safety net)
     cleaned = re.sub(r"```(?:json)?", "", raw).strip().rstrip("`")
     try:
         result = json.loads(cleaned)
         _parse_cache[file_hash] = result  # store in cache
+        logger.info(f"[parse_resume] JSON parsed OK — name='{result.get('name')}' confidence={result.get('parse_confidence')}")
         return result
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as exc:
+        # Gemini response was not valid JSON — log the tail so we can debug
+        logger.error(
+            f"[parse_resume] JSONDecodeError for '{filename}': {exc}. "
+            f"Response tail (last 300 chars): ...{raw[-300:]!r}"
+        )
         # Return a minimal fallback so we don't crash the upload
         return {
             "name": "Unknown",
