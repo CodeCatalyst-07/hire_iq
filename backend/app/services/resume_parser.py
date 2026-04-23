@@ -1,9 +1,15 @@
+import hashlib
 import io
 import json
 import re
 import pdfplumber
 import docx
-from app.utils.gemini import call_gemini
+from cachetools import TTLCache
+from app.utils.gemini import async_call_gemini
+
+# ── Opt 3: in-process TTL cache keyed on MD5 of raw file bytes ──────────────
+# maxsize=100 entries, ttl=3600s (1 hour). Process-local — cleared on restart.
+_parse_cache: TTLCache = TTLCache(maxsize=100, ttl=3600)
 
 
 def extract_text(file_bytes: bytes, filename: str) -> str:
@@ -24,11 +30,24 @@ def extract_text(file_bytes: bytes, filename: str) -> str:
     raise ValueError(f"Unsupported file type: {filename}")
 
 
-def parse_resume(file_bytes: bytes, filename: str) -> dict:
-    """Extract text then call Gemini to structure it."""
+async def parse_resume(file_bytes: bytes, filename: str) -> dict:
+    """Extract text then call Gemini to structure it.
+
+    Results are cached by MD5 hash of the raw bytes for 1 hour (Opt 3).
+    Gemini call is non-blocking via async_call_gemini (Opt 1).
+    """
+    # ── Cache lookup ─────────────────────────────────────────────────────────
+    file_hash = hashlib.md5(file_bytes).hexdigest()
+    if file_hash in _parse_cache:
+        import logging
+        logging.getLogger(__name__).info(f"[parse_resume] Cache HIT for hash {file_hash[:8]}…")
+        return _parse_cache[file_hash]
+
     resume_text = extract_text(file_bytes, filename)
 
-    prompt = f"""You are an expert resume parser. Extract all information from this resume and return ONLY a valid JSON object with no markdown, no code fences, just raw JSON.
+    prompt = f"""You are an expert resume parser. Extract all information from this resume.
+
+IMPORTANT: Return ONLY a valid JSON object. No markdown formatting, no code fences (no ```), no explanation text before or after. Raw JSON only.
 
 Resume Text:
 {resume_text}
@@ -70,12 +89,14 @@ Return this exact JSON structure:
   "parse_confidence": 85
 }}"""
 
-    raw = call_gemini(prompt)
+    raw = await async_call_gemini(prompt)
 
-    # Strip any accidental markdown fences
+    # Strip any accidental markdown fences (safety net)
     cleaned = re.sub(r"```(?:json)?", "", raw).strip().rstrip("`")
     try:
-        return json.loads(cleaned)
+        result = json.loads(cleaned)
+        _parse_cache[file_hash] = result  # store in cache
+        return result
     except json.JSONDecodeError:
         # Return a minimal fallback so we don't crash the upload
         return {

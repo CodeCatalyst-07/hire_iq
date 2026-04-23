@@ -14,7 +14,7 @@ router = APIRouter(prefix="/api/questions", tags=["questions"])
 
 
 @router.post("/generate", response_model=dict, status_code=201)
-def generate(
+async def generate(
     body: GenerateQuestionsRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -32,7 +32,7 @@ def generate(
     score_result = compute_score(parsed, job)
     missing = score_result.get("missing_skills", [])
 
-    questions = generate_questions(
+    questions = await generate_questions(
         parsed_profile=parsed,
         job_title=job.title,
         required_skills=job.required_skills or [],

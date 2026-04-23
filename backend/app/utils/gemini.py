@@ -1,5 +1,6 @@
 import logging
 import time
+import asyncio
 import google.generativeai as genai
 from app.config import settings
 
@@ -20,7 +21,7 @@ def get_gemini_model():
 
 
 def call_gemini(prompt: str, max_retries: int = 3) -> str:
-    """Call Gemini API with exponential backoff on quota errors."""
+    """Call Gemini API with exponential backoff on quota errors (sync)."""
     model = get_gemini_model()
     last_err = None
 
@@ -28,6 +29,14 @@ def call_gemini(prompt: str, max_retries: int = 3) -> str:
         try:
             logger.info(f"[Gemini] Attempt {attempt + 1}/{max_retries} — model: {_model_name}")
             response = model.generate_content(prompt)
+
+            # ── Opt 4B: token usage logging (set max_output_tokens after observing peaks) ──
+            try:
+                output_tokens = response.usage_metadata.candidates_token_count
+                logger.info(f"[TOKEN USAGE] output_tokens={output_tokens}")
+            except Exception:
+                pass  # usage_metadata may not be present on all SDK versions
+
             logger.info(f"[Gemini] Success on attempt {attempt + 1}")
             return response.text
 
@@ -49,3 +58,12 @@ def call_gemini(prompt: str, max_retries: int = 3) -> str:
 
     logger.error(f"[Gemini] All {max_retries} attempts exhausted. Last error: {last_err}")
     raise last_err
+
+
+async def async_call_gemini(prompt: str, max_retries: int = 3) -> str:
+    """Non-blocking Gemini call — runs sync call_gemini in a thread pool.
+
+    FastAPI's event loop is never blocked: the sync SDK call (including
+    any time.sleep() retries) executes in asyncio's default thread executor.
+    """
+    return await asyncio.to_thread(call_gemini, prompt, max_retries)

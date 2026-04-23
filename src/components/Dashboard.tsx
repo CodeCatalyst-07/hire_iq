@@ -1,10 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Users, FileUser, Briefcase, Plus, Search, Filter, ChevronRight, X, Loader2, UploadCloud } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { listJobs, createJob, getJobStats } from '../api/jobs';
 import { uploadResume, listCandidates } from '../api/candidates';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { CandidateRowSkeleton } from './Skeleton';
 
 interface Job { id: string; title: string; status: string; }
 interface Candidate {
@@ -15,13 +17,10 @@ interface Stats { total_applicants: number; shortlisted: number; avg_match_score
 
 export default function Dashboard() {
   const { user, logout } = useAuth();
+  const queryClient = useQueryClient();
 
-  const [jobs, setJobs] = useState<Job[]>([]);
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
-  const [candidates, setCandidates] = useState<Candidate[]>([]);
-  const [stats, setStats] = useState<Stats | null>(null);
   const [search, setSearch] = useState('');
-  const [loading, setLoading] = useState(false);
 
   // Modals
   const [showJobModal, setShowJobModal] = useState(false);
@@ -32,30 +31,29 @@ export default function Dashboard() {
   const [uploadLoading, setUploadLoading] = useState(false);
   const [uploadMsg, setUploadMsg] = useState('');
 
-  // Load jobs on mount
-  useEffect(() => {
-    listJobs().then((data) => {
-      setJobs(data);
-      if (data.length > 0) setSelectedJob(data[0]);
-    }).catch(() => {});
-  }, []);
+  // ── Opt 6: useQuery ───────────────────────────────────────────────────
+  const { data: jobs = [] } = useQuery({
+    queryKey: ['jobs'],
+    queryFn: async () => {
+      const data = await listJobs();
+      // Auto-select first job when jobs load if none selected yet
+      if (data.length > 0 && !selectedJob) setSelectedJob(data[0] as Job);
+      return data as Job[];
+    },
+  });
 
-  // Reload candidates AND stats whenever selected job changes
-  useEffect(() => {
-    if (!selectedJob) {
-      setCandidates([]);
-      setStats(null);
-      return;
-    }
-    setLoading(true);
-    Promise.all([
-      listCandidates(selectedJob.id),
-      getJobStats(selectedJob.id),
-    ]).then(([candidateData, statsData]) => {
-      setCandidates(candidateData.items || []);
-      setStats(statsData);
-    }).catch(() => {}).finally(() => setLoading(false));
-  }, [selectedJob]);
+  const { data: candidateResult, isLoading: loading } = useQuery({
+    queryKey: ['candidates', selectedJob?.id],
+    queryFn: () => listCandidates(selectedJob!.id),
+    enabled: !!selectedJob,
+  });
+  const candidates: Candidate[] = (candidateResult?.items ?? []) as Candidate[];
+
+  const { data: stats = null } = useQuery<Stats | null>({
+    queryKey: ['stats', selectedJob?.id],
+    queryFn: () => getJobStats(selectedJob!.id),
+    enabled: !!selectedJob,
+  });
 
   const handleCreateJob = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -67,8 +65,8 @@ export default function Dashboard() {
         required_skills: jobForm.required_skills.split(',').map(s => s.trim()).filter(Boolean),
         nice_to_have_skills: jobForm.nice_to_have_skills.split(',').map(s => s.trim()).filter(Boolean),
       });
-      setJobs(prev => [job, ...prev]);
-      setSelectedJob(job);
+      queryClient.invalidateQueries({ queryKey: ['jobs'] });
+      setSelectedJob(job as Job);
       setShowJobModal(false);
       setJobForm({ title: '', description: '', required_skills: '', nice_to_have_skills: '' });
     } catch { } finally { setJobLoading(false); }
@@ -187,8 +185,8 @@ export default function Dashboard() {
             </div>
 
             {loading ? (
-              <div className="flex items-center justify-center p-16 text-gray-400">
-                <Loader2 className="w-8 h-8 animate-spin" />
+              <div className="flex flex-col divide-y divide-gray-100">
+                {Array.from({ length: 5 }).map((_, i) => <CandidateRowSkeleton key={i} />)}
               </div>
             ) : filtered.length === 0 ? (
               <div className="flex flex-col items-center justify-center p-16 text-center gap-4">

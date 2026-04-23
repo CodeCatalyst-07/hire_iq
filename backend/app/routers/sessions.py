@@ -221,7 +221,7 @@ def start_session(
 # ── Submit answer ────────────────────────────────────────────────────────────
 
 @router.post("/{session_id}/answers", response_model=dict, status_code=201)
-def submit_answer(
+async def submit_answer(
     session_id: str,
     body: SubmitAnswerRequest,
     db: Session = Depends(get_db),
@@ -242,7 +242,7 @@ def submit_answer(
     job = db.query(JobPosting).filter(JobPosting.id == session.job_id).first()
     job_title = job.title if job else "the role"
 
-    result = evaluate_answer(question_text, body.answer_text, job_title)
+    result = await evaluate_answer(question_text, body.answer_text, job_title)
 
     answer = InterviewAnswer(
         session_id=session.id,

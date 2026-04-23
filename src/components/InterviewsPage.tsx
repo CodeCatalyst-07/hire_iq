@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Briefcase, Users, FileUser, Loader2, ChevronRight,
@@ -9,6 +9,8 @@ import { useAuth } from '../context/AuthContext';
 import { listSessions, getInsights, deleteSession } from '../api/interviews';
 import type { SessionListItem, SessionInsights } from '../api/interviews';
 import { listJobs } from '../api/jobs';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { SessionCardSkeleton } from './Skeleton';
 
 interface Job { id: string; title: string; status: string; }
 
@@ -54,38 +56,38 @@ function StatusBadge({ status }: { status: string }) {
 export default function InterviewsPage() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
-  const [jobs, setJobs] = useState<Job[]>([]);
   const [selectedJobId, setSelectedJobId] = useState<string>('all');
-  const [sessions, setSessions] = useState<SessionListItem[]>([]);
-  const [insights, setInsights] = useState<SessionInsights | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [insightsLoading, setInsightsLoading] = useState(true);
   const [compareMode, setCompareMode] = useState(false);
   const [compareIds, setCompareIds] = useState<Set<string>>(new Set());
 
-  // Load jobs on mount
-  useEffect(() => {
-    listJobs().then(setJobs).catch(() => {});
-  }, []);
+  // ── Opt 6: useQuery ───────────────────────────────────────────────────
+  const jobId = selectedJobId === 'all' ? undefined : selectedJobId;
 
-  // Reload sessions + insights when filter changes
-  useEffect(() => {
-    const jid = selectedJobId === 'all' ? undefined : selectedJobId;
-    setLoading(true);
-    setInsightsLoading(true);
+  const { data: jobs = [] } = useQuery({
+    queryKey: ['jobs'],
+    queryFn: listJobs,
+  });
 
-    Promise.all([listSessions(jid), getInsights(jid)])
-      .then(([s, i]) => { setSessions(s); setInsights(i); })
-      .catch(() => {})
-      .finally(() => { setLoading(false); setInsightsLoading(false); });
-  }, [selectedJobId]);
+  const { data: sessions = [], isLoading: loading } = useQuery({
+    queryKey: ['sessions', jobId],
+    queryFn: () => listSessions(jobId),
+  });
+
+  const { data: insights = null, isLoading: insightsLoading } = useQuery<SessionInsights | null>({
+    queryKey: ['insights', jobId],
+    queryFn: () => getInsights(jobId),
+  });
 
   const handleDelete = async (sessionId: string, candidateName: string) => {
     if (!window.confirm(`Are you sure you want to delete ${candidateName}'s session? This cannot be undone.`)) return;
     try {
       await deleteSession(sessionId);
-      setSessions(prev => prev.filter(s => s.id !== sessionId));
+      // Optimistic update — remove from cache immediately
+      queryClient.setQueryData<SessionListItem[]>(['sessions', jobId], prev =>
+        (prev ?? []).filter(s => s.id !== sessionId)
+      );
       setCompareIds(prev => { const n = new Set(prev); n.delete(sessionId); return n; });
     } catch {
       alert('Failed to delete session. Please try again.');
@@ -294,8 +296,8 @@ export default function InterviewsPage() {
               </h2>
 
               {loading ? (
-                <div className="flex items-center justify-center py-24">
-                  <Loader2 className="w-10 h-10 animate-spin text-primary" />
+                <div className="flex flex-col gap-4">
+                  {Array.from({ length: 4 }).map((_, i) => <SessionCardSkeleton key={i} />)}
                 </div>
               ) : sessions.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-24 gap-4 bg-white rounded-2xl border border-gray-200 shadow-sm text-center">

@@ -1,12 +1,18 @@
 import json
 import logging
 import re
-from app.utils.gemini import call_gemini
+from app.utils.gemini import async_call_gemini
 
 logger = logging.getLogger(__name__)
 
 
-def generate_questions(parsed_profile: dict, job_title: str, required_skills: list, nice_to_have: list, missing_skills: list) -> list[dict]:
+async def generate_questions(
+    parsed_profile: dict,
+    job_title: str,
+    required_skills: list,
+    nice_to_have: list,
+    missing_skills: list,
+) -> list[dict]:
     projects = parsed_profile.get('projects', []) or []
     has_projects = len(projects) > 0
 
@@ -47,7 +53,7 @@ IMPORTANT for Project Based questions (if any):
 - Do NOT generate generic project questions — make them specific to those projects
 - Use category value: "project_based"
 
-Return ONLY a JSON array, no markdown, no code fences:
+IMPORTANT: Return ONLY a valid JSON array. No markdown formatting, no code fences (no ```), no explanation text before or after. Raw JSON only.
 [
   {{
     "id": "q1",
@@ -61,7 +67,7 @@ Return ONLY a JSON array, no markdown, no code fences:
 ]"""
 
     try:
-        raw = call_gemini(prompt)
+        raw = await async_call_gemini(prompt)
     except Exception as e:
         logger.error(f"[generate_questions] Gemini call failed: {type(e).__name__}: {e}")
         return []
@@ -79,7 +85,7 @@ Return ONLY a JSON array, no markdown, no code fences:
         return []
 
 
-def evaluate_answer(question: str, answer_text: str, job_title: str) -> dict:
+async def evaluate_answer(question: str, answer_text: str, job_title: str) -> dict:
     prompt = f"""You are an expert career coach evaluating an interview answer.
 
 QUESTION: {question}
@@ -93,7 +99,7 @@ Score on these 5 dimensions (each 0-10, use one decimal place):
 - Confidence: Sounds confident vs hedging ("I think", "maybe", "sort of")?
 - Structure: Uses a clear framework (STAR/CAR/direct)?
 
-Return ONLY this JSON, no markdown:
+IMPORTANT: Return ONLY a valid JSON object. No markdown formatting, no code fences (no ```), no explanation text before or after. Raw JSON only.
 {{
   "scores": {{
     "relevance": 7.5,
@@ -111,7 +117,7 @@ Return ONLY this JSON, no markdown:
 }}"""
 
     try:
-        raw = call_gemini(prompt)
+        raw = await async_call_gemini(prompt)
     except Exception as e:
         # Return neutral scores on Gemini API failure (quota/timeout)
         logger.error(f"[evaluate_answer] Gemini call failed: {type(e).__name__}: {e}")

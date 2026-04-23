@@ -20,7 +20,7 @@ ALLOWED_EXTENSIONS = {".pdf", ".docx"}
 
 
 @router.post("/upload", response_model=dict, status_code=202)
-def upload_resume(
+async def upload_resume(
     file: UploadFile = File(...),
     job_id: str = Form(...),
     db: Session = Depends(get_db),
@@ -45,8 +45,8 @@ def upload_resume(
     with open(local_path, "wb") as f:
         f.write(file_bytes)
 
-    # Parse resume with Gemini
-    parsed_data = parse_resume(file_bytes, file.filename or f"resume{ext}")
+    # Parse resume with Gemini (async, non-blocking)
+    parsed_data = await parse_resume(file_bytes, file.filename or f"resume{ext}")
 
     # Create candidate from extracted data
     candidate = Candidate(

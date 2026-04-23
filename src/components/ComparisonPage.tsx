@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { ArrowLeft, Trophy, TrendingUp, Target, Loader2, BarChart2 } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { compareSessions } from '../api/interviews';
 import type { CompareSessionItem } from '../api/interviews';
+import { useQuery } from '@tanstack/react-query';
 
 const DIMENSIONS = ['relevance', 'clarity', 'depth', 'confidence', 'structure'] as const;
 type Dim = typeof DIMENSIONS[number];
@@ -46,18 +46,15 @@ export default function ComparisonPage() {
   const [searchParams] = useSearchParams();
   const { user, logout } = useAuth();
 
-  const [candidates, setCandidates] = useState<CompareSessionItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const idsParam = searchParams.get('ids') || '';
+  const ids = idsParam.split(',').filter(Boolean);
 
-  useEffect(() => {
-    const idsParam = searchParams.get('ids') || '';
-    const ids = idsParam.split(',').filter(Boolean);
-    if (!ids.length) { setLoading(false); return; }
-    compareSessions(ids)
-      .then(setCandidates)
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, []);
+  // ── Opt 6: useQuery ─────────────────────────────────────────────────
+  const { data: candidates = [], isLoading: loading } = useQuery({
+    queryKey: ['compare', idsParam],   // cached by exact set of IDs
+    queryFn: () => compareSessions(ids),
+    enabled: ids.length > 0,
+  });
 
   // Find best score for each dimension across all candidates
   const bestDim = (dim: Dim) => {

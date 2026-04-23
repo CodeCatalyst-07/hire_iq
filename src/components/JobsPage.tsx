@@ -7,6 +7,8 @@ import {
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { listJobs, createJob, updateJob, deleteJob } from '../api/jobs';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { JobCardSkeleton } from './Skeleton';
 
 interface Job {
   id: string;
@@ -37,8 +39,7 @@ function StatusBadge({ status }: { status: string }) {
 export default function JobsPage() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
-  const [jobs, setJobs] = useState<Job[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [openMenu, setOpenMenu] = useState<string | null>(null);
@@ -48,15 +49,13 @@ export default function JobsPage() {
   const [form, setForm] = useState({
     title: '', description: '', required_skills: '', nice_to_have_skills: '',
   });
-  const [creating, setCreating] = useState(false);
   const [createErr, setCreateErr] = useState('');
 
-  useEffect(() => {
-    listJobs()
-      .then(setJobs)
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, []);
+  // ── Opt 6: useQuery for job list ──────────────────────────────────────────
+  const { data: jobs = [], isLoading: loading } = useQuery({
+    queryKey: ['jobs'],
+    queryFn: listJobs,
+  });
 
   // Close context menu when clicking outside
   useEffect(() => {
@@ -65,33 +64,37 @@ export default function JobsPage() {
     return () => document.removeEventListener('click', handler);
   }, []);
 
+  const createMutation = useMutation({
+    mutationFn: createJob,
+    onSuccess: (newJob) => {
+      queryClient.setQueryData<Job[]>(['jobs'], prev => [newJob as Job, ...(prev ?? [])]);
+      setShowModal(false);
+      setForm({ title: '', description: '', required_skills: '', nice_to_have_skills: '' });
+    },
+    onError: (err: any) => {
+      setCreateErr(err?.response?.data?.detail || 'Failed to create job. Please try again.');
+    },
+  });
+
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.title.trim()) return;
-    setCreating(true);
     setCreateErr('');
-    try {
-      const newJob = await createJob({
-        title: form.title,
-        description: form.description || undefined,
-        required_skills: form.required_skills.split(',').map(s => s.trim()).filter(Boolean),
-        nice_to_have_skills: form.nice_to_have_skills.split(',').map(s => s.trim()).filter(Boolean),
-      });
-      setJobs(prev => [newJob, ...prev]);
-      setShowModal(false);
-      setForm({ title: '', description: '', required_skills: '', nice_to_have_skills: '' });
-    } catch (err: any) {
-      setCreateErr(err?.response?.data?.detail || 'Failed to create job. Please try again.');
-    } finally {
-      setCreating(false);
-    }
+    createMutation.mutate({
+      title: form.title,
+      description: form.description || undefined,
+      required_skills: form.required_skills.split(',').map(s => s.trim()).filter(Boolean),
+      nice_to_have_skills: form.nice_to_have_skills.split(',').map(s => s.trim()).filter(Boolean),
+    });
   };
 
   const handleStatusChange = async (jobId: string, status: string) => {
     setOpenMenu(null);
     try {
       const updated = await updateJob(jobId, { status });
-      setJobs(prev => prev.map(j => j.id === jobId ? { ...j, status: updated.status } : j));
+      queryClient.setQueryData<Job[]>(['jobs'], prev =>
+        (prev ?? []).map(j => j.id === jobId ? { ...j, status: updated.status } : j)
+      );
     } catch {}
   };
 
@@ -100,7 +103,7 @@ export default function JobsPage() {
     if (!confirm('Archive this job? It will be hidden from the board.')) return;
     try {
       await deleteJob(jobId);
-      setJobs(prev => prev.filter(j => j.id !== jobId));
+      queryClient.setQueryData<Job[]>(['jobs'], prev => (prev ?? []).filter(j => j.id !== jobId));
     } catch {}
   };
 
@@ -189,8 +192,8 @@ export default function JobsPage() {
 
         <div className="p-8">
           {loading ? (
-            <div className="flex items-center justify-center py-32">
-              <Loader2 className="w-10 h-10 animate-spin text-primary" />
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+              {Array.from({ length: 6 }).map((_, i) => <JobCardSkeleton key={i} />)}
             </div>
           ) : filtered.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-32 gap-4 text-center">
@@ -371,10 +374,10 @@ export default function JobsPage() {
                     className="flex-1 py-3 border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50 transition-colors">
                     Cancel
                   </button>
-                  <button type="submit" disabled={creating}
+                  <button type="submit" disabled={createMutation.isPending}
                     className="flex-1 py-3 bg-primary text-white rounded-lg font-bold hover:bg-primary/90 disabled:opacity-60 flex items-center justify-center gap-2 transition-colors">
-                    {creating && <Loader2 className="w-4 h-4 animate-spin" />}
-                    {creating ? 'Creating…' : 'Create Job'}
+                    {createMutation.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
+                    {createMutation.isPending ? 'Creating…' : 'Create Job'}
                   </button>
                 </div>
               </form>
