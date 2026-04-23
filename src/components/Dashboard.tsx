@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Users, FileUser, Briefcase, Plus, Search, Filter, ChevronRight, X, Loader2, UploadCloud } from 'lucide-react';
 import { Link } from 'react-router-dom';
@@ -34,13 +34,18 @@ export default function Dashboard() {
   // ── Opt 6: useQuery ───────────────────────────────────────────────────
   const { data: jobs = [] } = useQuery({
     queryKey: ['jobs'],
-    queryFn: async () => {
-      const data = await listJobs();
-      // Auto-select first job when jobs load if none selected yet
-      if (data.length > 0 && !selectedJob) setSelectedJob(data[0] as Job);
-      return data as Job[];
-    },
+    queryFn: async () => (await listJobs()) as Job[],
   });
+
+  // Auto-select the first job once jobs load — runs only when jobs array
+  // changes AND no job is selected. Lives in useEffect so it does NOT
+  // run inside the queryFn (which is called on every background refetch,
+  // causing the candidates key to change and blanking the list).
+  useEffect(() => {
+    if (jobs.length > 0 && !selectedJob) {
+      setSelectedJob(jobs[0]);
+    }
+  }, [jobs]);
 
   const { data: candidateResult, isLoading: loading } = useQuery({
     queryKey: ['candidates', selectedJob?.id],
