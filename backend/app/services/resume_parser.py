@@ -19,18 +19,9 @@ _parse_cache: TTLCache = TTLCache(maxsize=100, ttl=3600)
 MIN_TEXT_LENGTH = 100   # chars after .strip() — below this triggers OCR
 MIN_OCR_RESULT  = 50    # chars after OCR — below this scan is unreadable
 
-# ── Conditional EasyOCR import (pure Python — no system deps) ────────────────
-# easyocr downloads ~100 MB of ML models on first initialisation (cached
-# in ~/.EasyOCR/).  The import itself is fast; Reader() init is slow (once).
-try:
-    import easyocr as _easyocr_module
-    EASYOCR_AVAILABLE = True
-    logger.info("[OCR] easyocr loaded successfully")
-except ImportError:
-    EASYOCR_AVAILABLE = False
-    logger.warning("[OCR] easyocr not installed — OCR fallback disabled")
-
-# Lazy singleton — initialised once on first OCR call, reused for all requests
+# Lazy singleton — set on first OCR call, reused for all subsequent requests.
+# easyocr is NOT imported at module load time: doing so delays startup by
+# several seconds and causes Render to report "No open ports detected".
 _ocr_reader = None
 
 # Image extensions that go straight to OCR (no text layer to try first)
@@ -42,11 +33,21 @@ _IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".tiff", ".tif", ".bmp", ".webp"}
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _get_ocr_reader():
-    """Return the shared EasyOCR Reader, initialising it on first call."""
+    """Return the shared EasyOCR Reader, initialising it on first call.
+
+    easyocr is imported HERE (not at module level) so the app starts
+    instantly and Render can detect the port before OCR models load.
+    """
     global _ocr_reader
     if _ocr_reader is None:
+        try:
+            import easyocr  # lazy — only runs when OCR is first needed
+        except ImportError:
+            raise ValueError(
+                "OCR service unavailable. Please upload a digital PDF or DOCX file instead."
+            )
         logger.info("[OCR] Initialising EasyOCR Reader (models download on first run)…")
-        _ocr_reader = _easyocr_module.Reader(["en"], gpu=False, verbose=False)
+        _ocr_reader = easyocr.Reader(["en"], gpu=False, verbose=False)
         logger.info("[OCR] EasyOCR Reader ready")
     return _ocr_reader
 
@@ -60,11 +61,7 @@ def _extract_text_with_ocr(file_bytes: bytes, source_hint: str = "file") -> str:
 
     Raises ValueError with a user-readable message on all failure modes.
     """
-    if not EASYOCR_AVAILABLE:
-        raise ValueError(
-            "OCR service unavailable. Please upload a digital PDF or DOCX file instead."
-        )
-
+    # _get_ocr_reader() does the lazy import — raises ValueError if unavailable
     reader = _get_ocr_reader()
 
     # ── Path 1: scanned PDF — render pages with PyMuPDF → OCR each page ──────
