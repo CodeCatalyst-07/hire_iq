@@ -67,7 +67,10 @@ IMPORTANT: Return ONLY a valid JSON array. No markdown formatting, no code fence
 ]"""
 
     try:
-        raw = await async_call_gemini(prompt, max_output_tokens=1500)
+        # No max_output_tokens cap — 10-12 questions with follow-ups is
+        # 800-1500+ tokens. A 1500-token cap truncates mid-JSON and returns [].
+        raw = await async_call_gemini(prompt)
+        logger.info(f"[generate_questions] Gemini response: {len(raw)} chars")
     except Exception as e:
         logger.error(f"[generate_questions] Gemini call failed: {type(e).__name__}: {e}")
         return []
@@ -78,10 +81,22 @@ IMPORTANT: Return ONLY a valid JSON array. No markdown formatting, no code fence
     match = re.search(r"\[.*\]", cleaned, re.DOTALL)
     if match:
         cleaned = match.group(0)
+    else:
+        logger.error(
+            f"[generate_questions] No JSON array found in response. "
+            f"Response tail (last 300 chars): ...{raw[-300:]!r}"
+        )
+        return []
 
     try:
-        return json.loads(cleaned)
-    except json.JSONDecodeError:
+        questions = json.loads(cleaned)
+        logger.info(f"[generate_questions] Parsed {len(questions)} questions OK")
+        return questions
+    except json.JSONDecodeError as exc:
+        logger.error(
+            f"[generate_questions] JSONDecodeError: {exc}. "
+            f"Response tail (last 300 chars): ...{raw[-300:]!r}"
+        )
         return []
 
 

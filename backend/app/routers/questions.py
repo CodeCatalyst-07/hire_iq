@@ -41,9 +41,14 @@ async def generate(
     )
 
     if not questions:
+        import logging
+        logging.getLogger(__name__).error(
+            "[generate] generate_questions returned empty list — "
+            "check [generate_questions] log lines above for root cause"
+        )
         raise HTTPException(
-            status_code=503,
-            detail="AI question generation failed (Gemini API unavailable or quota exceeded). Please try again in a few seconds."
+            status_code=500,
+            detail="Question generation failed. Check server logs for details."
         )
 
     bank = QuestionBank(
