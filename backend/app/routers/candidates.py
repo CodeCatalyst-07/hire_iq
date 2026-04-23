@@ -15,8 +15,10 @@ from app.config import settings
 
 router = APIRouter(prefix="/api/candidates", tags=["candidates"])
 
-ALLOWED_TYPES = {"application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"}
-ALLOWED_EXTENSIONS = {".pdf", ".docx"}
+ALLOWED_EXTENSIONS = {
+    ".pdf", ".docx",
+    ".jpg", ".jpeg", ".png", ".tiff", ".tif", ".bmp", ".webp",
+}
 
 
 @router.post("/upload", response_model=dict, status_code=202)
@@ -28,7 +30,10 @@ async def upload_resume(
 ):
     ext = os.path.splitext(file.filename or "")[1].lower()
     if ext not in ALLOWED_EXTENSIONS:
-        raise HTTPException(status_code=400, detail="Only PDF and DOCX files are supported")
+        raise HTTPException(
+            status_code=400,
+            detail="Unsupported file type. Please upload a PDF, DOCX, JPG, PNG, or TIFF file.",
+        )
 
     file_bytes = file.file.read()
     if len(file_bytes) > settings.max_file_size_mb * 1024 * 1024:
