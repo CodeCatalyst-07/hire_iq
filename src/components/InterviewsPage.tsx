@@ -12,7 +12,7 @@ import { listJobs } from '../api/jobs';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { SessionCardSkeleton } from './Skeleton';
 
-interface Job { id: string; title: string; status: string; }
+
 
 const DIMENSIONS = ['relevance', 'clarity', 'depth', 'confidence', 'structure'] as const;
 type Dimension = typeof DIMENSIONS[number];
@@ -207,7 +207,7 @@ export default function InterviewsPage() {
               className="text-sm border border-gray-200 rounded-lg px-3 py-2 text-gray-700 bg-gray-50 focus:outline-none focus:border-primary min-w-[200px]"
             >
               <option value="all">All Job Roles</option>
-              {jobs.map(j => (
+              {jobs.map((j: { id: string; title: string; status: string }) => (
                 <option key={j.id} value={j.id}>{j.title}</option>
               ))}
             </select>

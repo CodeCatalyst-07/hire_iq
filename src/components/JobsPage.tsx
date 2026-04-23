@@ -107,7 +107,7 @@ export default function JobsPage() {
     } catch {}
   };
 
-  const filtered = jobs.filter(j => {
+  const filtered = jobs.filter((j: Job) => {
     const matchSearch = j.title.toLowerCase().includes(search.toLowerCase());
     const matchStatus = filterStatus === 'all' || j.status === filterStatus;
     return matchSearch && matchStatus;
@@ -214,7 +214,7 @@ export default function JobsPage() {
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-              {filtered.map((job, i) => (
+              {filtered.map((job: Job, i: number) => (
                 <motion.div
                   key={job.id}
                   initial={{ opacity: 0, y: 12 }}
@@ -281,7 +281,7 @@ export default function JobsPage() {
                     {/* Skills chips */}
                     {job.required_skills.length > 0 && (
                       <div className="flex flex-wrap gap-1.5 mt-3">
-                        {job.required_skills.slice(0, 4).map(s => (
+                        {job.required_skills.slice(0, 4).map((s: string) => (
                           <span key={s} className="text-xs px-2 py-0.5 bg-purple-50 text-primary border border-primary/20 rounded-md font-medium">
                             {s}
                           </span>

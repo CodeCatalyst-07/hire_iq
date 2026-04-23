@@ -3,7 +3,6 @@ import { ArrowLeft, Trophy, TrendingUp, Target, Loader2, BarChart2 } from 'lucid
 import { Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { compareSessions } from '../api/interviews';
-import type { CompareSessionItem } from '../api/interviews';
 import { useQuery } from '@tanstack/react-query';
 
 const DIMENSIONS = ['relevance', 'clarity', 'depth', 'confidence', 'structure'] as const;

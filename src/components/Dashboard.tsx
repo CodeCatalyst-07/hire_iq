@@ -80,9 +80,9 @@ export default function Dashboard() {
     try {
       await uploadResume(uploadFile, selectedJob.id);
       setUploadMsg('✓ Resume parsed and scored successfully!');
-      // Refresh candidates
-      const data = await listCandidates(selectedJob.id);
-      setCandidates(data.items || []);
+      // Refresh candidates cache for this job
+      queryClient.invalidateQueries({ queryKey: ['candidates', selectedJob.id] });
+      queryClient.invalidateQueries({ queryKey: ['stats', selectedJob.id] });
       setUploadFile(null);
       setTimeout(() => { setShowUploadModal(false); setUploadMsg(''); }, 1500);
     } catch (err: any) {
